@@ -103,7 +103,9 @@ The system uses PostgreSQL with the following main entities:
 - Session table auto-creation for authentication
 
 ## Changelog
-- June 28, 2025. Initial setup
+- June 28, 2025: Initial setup of legal case management system
+- June 28, 2025: Successfully deployed Arabic legal case management system with complete functionality
+- June 28, 2025: Database seeded with sample users for testing
 
 ## User Preferences
 
