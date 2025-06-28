@@ -125,9 +125,9 @@ export default function CasesPage() {
     <Layout>
       <Header title="إدارة القضايا" subtitle="إدارة القضايا القانونية ومتابعتها" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Search and Add */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-4">
           <div className="relative w-64">
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input

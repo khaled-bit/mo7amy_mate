@@ -164,7 +164,7 @@ export default function TasksPage() {
     <Layout>
       <Header title="إدارة المهام" subtitle="إنشاء وتتبع المهام والأعمال" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
@@ -217,7 +217,7 @@ export default function TasksPage() {
         </div>
 
         {/* Search and Add */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-4">
           <div className="relative w-64">
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input

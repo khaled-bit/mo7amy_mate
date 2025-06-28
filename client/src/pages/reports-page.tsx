@@ -82,7 +82,7 @@ export default function ReportsPage() {
     <Layout>
       <Header title="التقارير والإحصائيات" subtitle="تحليل شامل لأداء المكتب والإحصائيات" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Report Controls */}
         <Card>
           <CardHeader>

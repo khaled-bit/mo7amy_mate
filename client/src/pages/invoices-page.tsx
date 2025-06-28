@@ -141,7 +141,7 @@ export default function InvoicesPage() {
     <Layout>
       <Header title="إدارة الفواتير" subtitle="إنشاء ومتابعة الفواتير والمدفوعات" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
@@ -182,7 +182,7 @@ export default function InvoicesPage() {
         </div>
 
         {/* Search and Add */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-4">
           <div className="relative w-64">
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input

@@ -111,7 +111,7 @@ export default function ActivityPage() {
     <Layout>
       <Header title="سجل الأنشطة" subtitle="تتبع جميع العمليات والأنشطة في النظام" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>

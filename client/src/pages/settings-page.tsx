@@ -198,7 +198,7 @@ export default function SettingsPage() {
     <Layout>
       <Header title="الإعدادات" subtitle="إدارة إعدادات النظام والملف الشخصي" />
       
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="flex items-center gap-2">
