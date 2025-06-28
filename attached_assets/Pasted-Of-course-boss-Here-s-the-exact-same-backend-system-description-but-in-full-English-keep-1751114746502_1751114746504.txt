@@ -1,0 +1,246 @@
+Of course boss! Here's **the exact same backend system** description, but in full **English** — keeping everything organized and detailed just like before.
+
+---
+
+## 🏗️ Backend Structure (Express + PostgreSQL)
+
+### 📦 Project Folder Structure:
+
+```
+lawyermate-backend/
+│
+├── config/           ← DB connection and environment setup
+├── controllers/      ← Business logic for modules (clients, cases, etc.)
+├── middlewares/      ← Auth, permissions, logging
+├── models/           ← DB queries (can be raw SQL or use something like knex/sequelize)
+├── routes/           ← All API endpoints
+├── utils/            ← Helpers (e.g. encryption, validators)
+├── uploads/          ← Case document storage (optional if not using S3)
+├── .env              ← DB credentials, JWT secret, etc.
+└── app.js            ← Main app entry point
+```
+
+---
+
+## 🧠 PostgreSQL Database Structure
+
+### Main Tables:
+
+```sql
+users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE,
+  password TEXT,
+  role TEXT CHECK (role IN ('admin', 'assistant', 'lawyer')),
+  created_at TIMESTAMP DEFAULT NOW()
+)
+
+clients (
+  id SERIAL PRIMARY KEY,
+  name TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  notes TEXT
+)
+
+cases (
+  id SERIAL PRIMARY KEY,
+  title TEXT,
+  type TEXT,
+  status TEXT,
+  court TEXT,
+  client_id INTEGER REFERENCES clients(id),
+  start_date DATE,
+  notes TEXT
+)
+
+case_users (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES cases(id),
+  user_id INTEGER REFERENCES users(id),
+  role TEXT  -- optional: if lawyer, assistant, etc.
+)
+
+sessions (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES cases(id),
+  date DATE,
+  time TIME,
+  location TEXT,
+  notes TEXT
+)
+
+documents (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES cases(id),
+  file_path TEXT,
+  uploaded_by INTEGER REFERENCES users(id),
+  uploaded_at TIMESTAMP DEFAULT NOW()
+)
+
+invoices (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES cases(id),
+  amount NUMERIC,
+  paid BOOLEAN DEFAULT FALSE,
+  due_date DATE
+)
+
+tasks (
+  id SERIAL PRIMARY KEY,
+  title TEXT,
+  assigned_to INTEGER REFERENCES users(id),
+  due_date DATE,
+  status TEXT
+)
+
+activity_log (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT,
+  target_type TEXT,
+  target_id INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+```
+
+---
+
+## 🔐 Auth & Permissions
+
+### Login/Register:
+
+* `/api/auth/login` → Returns JWT token
+* `/api/auth/register` → Only Admins can create users
+
+### JWT Auth Middleware:
+
+```js
+function authMiddleware(role = null) {
+  return (req, res, next) => {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+
+      if (role && decoded.role !== role) {
+        return res.status(403).json({ message: "Access Denied" });
+      }
+
+      next();
+    } catch (err) {
+      return res.status(401).json({ message: "Invalid Token" });
+    }
+  };
+}
+```
+
+---
+
+## 🧪 Sample Route + Controller Logic
+
+### 🔸 routes/cases.js
+
+```js
+const express = require("express");
+const router = express.Router();
+const auth = require("../middlewares/auth");
+const caseController = require("../controllers/caseController");
+
+router.get("/", auth(), caseController.getAllCases);
+router.post("/", auth("admin"), caseController.createCase);
+router.get("/:id", auth(), caseController.getCaseDetails);
+router.put("/:id", auth("admin"), caseController.updateCase);
+
+module.exports = router;
+```
+
+### 🔸 controllers/caseController.js
+
+```js
+const db = require("../models/db");
+
+exports.getAllCases = async (req, res) => {
+  try {
+    const user = req.user;
+
+    let cases;
+    if (user.role === "admin") {
+      cases = await db.query("SELECT * FROM cases");
+    } else if (user.role === "lawyer") {
+      cases = await db.query(
+        "SELECT c.* FROM cases c JOIN case_users cu ON c.id = cu.case_id WHERE cu.user_id = $1",
+        [user.id]
+      );
+    } else {
+      // assistant sees all cases, but read-only
+      cases = await db.query("SELECT * FROM cases");
+    }
+
+    res.json(cases.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+```
+
+---
+
+## 📌 Must-Have Features to Include
+
+✅ **Activity Logging**
+Track every user action: who did what, where, and when.
+
+✅ **Session Conflict Detection**
+Warn if a lawyer has two sessions at the same time.
+
+✅ **Advanced Search**
+Search cases by title, client name, court, or date.
+
+✅ **Flexible Role Permissions**
+Use a `roles.json` config file for scalable permission control.
+
+---
+
+## 🧰 Libraries and Tools You’ll Use
+
+* `express` → Web framework
+* `pg` → PostgreSQL connection
+* `jsonwebtoken` → JWT auth
+* `bcrypt` → Hashing passwords
+* `multer` → File uploads (for documents)
+* `dotenv` → Environment configs
+* `cors` → Allow frontend to connect
+* `morgan` → Logging HTTP requests
+
+---
+
+## 👥 User Roles Summary
+
+| Permission / Role      | Admin Lawyer | Collaborator | Assistant |
+| ---------------------- | ------------ | ------------ | --------- |
+| Manage clients         | ✅            | ❌            | ❌         |
+| Manage all cases       | ✅            | ❌            | ❌         |
+| Manage own cases only  | ✅            | ✅            | ❌         |
+| Create/update sessions | ✅            | ✅            | ✅         |
+| Upload documents       | ✅            | ✅            | ✅         |
+| Manage invoices        | ✅            | ❌            | ❌         |
+| Dashboard view         | ✅            | Limited      | Limited   |
+| User management        | ✅            | ❌            | ❌         |
+
+---
+
+## ✅ Want to start?
+
+I can quickly scaffold for you:
+
+* A ready-to-go Express backend
+* Login + register system with hashed passwords
+* JWT-based route protection
+* A working cases API with full role-based access
+* PostgreSQL schema migration setup
+
+Would you like that? Or do you want a full Dockerized environment too with Postgres + pgAdmin?
