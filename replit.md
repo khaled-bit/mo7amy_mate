@@ -106,6 +106,7 @@ The system uses PostgreSQL with the following main entities:
 - June 28, 2025: Initial setup of legal case management system
 - June 28, 2025: Successfully deployed Arabic legal case management system with complete functionality
 - June 28, 2025: Database seeded with sample users for testing
+- June 28, 2025: Updated currency system from Saudi Riyal to Egyptian Pound throughout application
 
 ## User Preferences
 

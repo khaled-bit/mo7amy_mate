@@ -93,9 +93,9 @@ export default function SettingsPage() {
 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     language: "ar",
-    timezone: "Asia/Riyadh",
+    timezone: "Africa/Cairo",
     dateFormat: "DD/MM/YYYY",
-    currency: "SAR",
+    currency: "EGP",
     autoBackup: true,
     sessionTimeout: 30,
   });
@@ -599,6 +599,7 @@ export default function SettingsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="Africa/Cairo">القاهرة (GMT+2)</SelectItem>
                             <SelectItem value="Asia/Riyadh">الرياض (GMT+3)</SelectItem>
                             <SelectItem value="Asia/Kuwait">الكويت (GMT+3)</SelectItem>
                             <SelectItem value="Asia/Dubai">دبي (GMT+4)</SelectItem>
@@ -633,6 +634,7 @@ export default function SettingsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="EGP">جنيه مصري (EGP)</SelectItem>
                             <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
                             <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
                             <SelectItem value="KWD">دينار كويتي (KWD)</SelectItem>

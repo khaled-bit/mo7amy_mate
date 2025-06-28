@@ -66,7 +66,7 @@ export default function HomePage() {
       title: "الفواتير المعلقة",
       value: `${stats?.pendingInvoices || 0}`,
       icon: Receipt,
-      change: "ريال سعودي",
+      change: "جنيه مصري",
       color: "red"
     }
   ];

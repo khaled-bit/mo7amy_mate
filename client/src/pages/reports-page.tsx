@@ -46,7 +46,7 @@ export default function ReportsPage() {
     },
     {
       title: "الإيرادات",
-      value: "245,000 ريال",
+      value: "245,000 جنيه",
       change: "+18%",
       trend: "up",
       icon: Receipt,
@@ -204,7 +204,7 @@ export default function ReportsPage() {
                         ></div>
                       </div>
                       <span className="text-sm font-medium w-20 text-left">
-                        {item.amount.toLocaleString()} ريال
+                        {item.amount.toLocaleString()} جنيه
                       </span>
                     </div>
                   </div>

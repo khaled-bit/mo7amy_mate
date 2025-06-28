@@ -161,7 +161,7 @@ export default function InvoicesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">المبالغ المعلقة</p>
-                  <p className="text-2xl font-bold text-red-600">{totalPending.toLocaleString()} ريال</p>
+                  <p className="text-2xl font-bold text-red-600">{totalPending.toLocaleString()} جنيه</p>
                 </div>
                 <Clock className="w-8 h-8 text-red-600" />
               </div>
@@ -173,7 +173,7 @@ export default function InvoicesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">المبالغ المدفوعة</p>
-                  <p className="text-2xl font-bold text-green-600">{totalPaid.toLocaleString()} ريال</p>
+                  <p className="text-2xl font-bold text-green-600">{totalPaid.toLocaleString()} جنيه</p>
                 </div>
                 <CheckCircle className="w-8 h-8 text-green-600" />
               </div>
@@ -238,7 +238,7 @@ export default function InvoicesPage() {
                     name="amount"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>المبلغ (ريال)</FormLabel>
+                        <FormLabel>المبلغ (جنيه)</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" {...field} />
                         </FormControl>
@@ -338,7 +338,7 @@ export default function InvoicesPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <DollarSign className="w-4 h-4 text-muted-foreground" />
-                            {parseFloat(invoice.amount).toLocaleString()} ريال
+                            {parseFloat(invoice.amount).toLocaleString()} جنيه
                           </div>
                         </TableCell>
                         <TableCell>{invoice.description || "-"}</TableCell>
