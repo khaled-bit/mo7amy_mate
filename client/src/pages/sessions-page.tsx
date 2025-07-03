@@ -264,7 +264,7 @@ export default function SessionsPage() {
                         <FormItem>
                           <FormLabel>الموقع</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="محكمة الرياض، المكتب..." />
+                            <Input {...field} value={field.value || ''} placeholder="محكمة الرياض، المكتب..." />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -302,7 +302,7 @@ export default function SessionsPage() {
                       <FormItem>
                         <FormLabel>ملاحظات</FormLabel>
                         <FormControl>
-                          <Textarea {...field} placeholder="ملاحظات إضافية حول الجلسة..." />
+                          <Textarea {...field} value={field.value || ''} placeholder="ملاحظات إضافية حول الجلسة..." />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

@@ -21,7 +21,7 @@ import {
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { formatDualDate } from "@/lib/utils";
-import { type ActivityLog, type User } from "@shared/schema";
+import { type ActivityLog, type User as UserType } from "@shared/schema";
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -47,7 +47,7 @@ export default function HomePage() {
     },
   });
 
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: users = [] } = useQuery<UserType[]>({
     queryKey: ["/api/users"],
     queryFn: async () => {
       const res = await fetch("/api/users", {

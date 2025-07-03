@@ -262,7 +262,7 @@ export default function CasesPage() {
                       <FormItem>
                         <FormLabel>المحكمة</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -277,7 +277,7 @@ export default function CasesPage() {
                         <FormItem>
                           <FormLabel>تاريخ البداية</FormLabel>
                           <FormControl>
-                            <Input type="date" {...field} />
+                            <Input type="date" {...field} value={field.value || ''} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -290,7 +290,7 @@ export default function CasesPage() {
                         <FormItem>
                           <FormLabel>تاريخ الانتهاء</FormLabel>
                           <FormControl>
-                            <Input type="date" {...field} />
+                            <Input type="date" {...field} value={field.value || ''} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -305,7 +305,7 @@ export default function CasesPage() {
                       <FormItem>
                         <FormLabel>وصف القضية</FormLabel>
                         <FormControl>
-                          <Textarea {...field} />
+                          <Textarea {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -319,7 +319,7 @@ export default function CasesPage() {
                       <FormItem>
                         <FormLabel>ملاحظات</FormLabel>
                         <FormControl>
-                          <Textarea {...field} />
+                          <Textarea {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
