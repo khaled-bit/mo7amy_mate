@@ -81,7 +81,7 @@ export const documents = pgTable("documents", {
 
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
-  caseId: integer("case_id").notNull().references(() => cases.id),
+  caseId: integer("case_id").references(() => cases.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description"),
   paid: boolean("paid").default(false),
@@ -186,6 +186,7 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   case: one(cases, {
     fields: [invoices.caseId],
     references: [cases.id],
+    relationName: "invoiceCase",
   }),
   createdBy: one(users, {
     fields: [invoices.createdBy],
@@ -249,6 +250,8 @@ export const insertInvoiceSchema = createInsertSchema(invoices).omit({
   id: true,
   createdAt: true,
   createdBy: true,
+}).extend({
+  caseId: z.number().optional(),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({

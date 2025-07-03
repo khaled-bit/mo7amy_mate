@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { insertInvoiceSchema, type Invoice, type InsertInvoice, type Case } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatDualDate } from "@/lib/utils";
 
 export default function InvoicesPage() {
   const [open, setOpen] = useState(false);
@@ -35,7 +36,7 @@ export default function InvoicesPage() {
   const form = useForm<InsertInvoice>({
     resolver: zodResolver(insertInvoiceSchema),
     defaultValues: {
-      caseId: 0,
+      caseId: undefined,
       amount: "",
       description: "",
       paid: false,
@@ -52,7 +53,14 @@ export default function InvoicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       setOpen(false);
-      form.reset();
+      form.reset({
+        caseId: undefined,
+        amount: "",
+        description: "",
+        paid: false,
+        dueDate: "",
+        paidDate: "",
+      });
       toast({ title: "تم إضافة الفاتورة بنجاح" });
     },
     onError: () => {
@@ -69,7 +77,14 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       setOpen(false);
       setEditingInvoice(null);
-      form.reset();
+      form.reset({
+        caseId: undefined,
+        amount: "",
+        description: "",
+        paid: false,
+        dueDate: "",
+        paidDate: "",
+      });
       toast({ title: "تم تحديث الفاتورة بنجاح" });
     },
     onError: () => {
@@ -195,7 +210,17 @@ export default function InvoicesPage() {
           
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => { setEditingInvoice(null); form.reset(); }}>
+              <Button onClick={() => { 
+                setEditingInvoice(null); 
+                form.reset({
+                  caseId: undefined,
+                  amount: "",
+                  description: "",
+                  paid: false,
+                  dueDate: "",
+                  paidDate: "",
+                }); 
+              }}>
                 <Plus className="w-4 h-4 ml-2" />
                 إضافة فاتورة جديدة
               </Button>
@@ -214,13 +239,14 @@ export default function InvoicesPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>القضية</FormLabel>
-                        <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value?.toString()}>
+                        <Select onValueChange={(value) => field.onChange(value === "no-case" ? undefined : parseInt(value))} value={field.value?.toString() || "no-case"}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="اختر القضية" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            <SelectItem value="no-case">غير مرتبطة بقضية</SelectItem>
                             {cases?.map((caseItem) => (
                               <SelectItem key={caseItem.id} value={caseItem.id.toString()}>
                                 {caseItem.title}
@@ -254,7 +280,7 @@ export default function InvoicesPage() {
                       <FormItem>
                         <FormLabel>الوصف</FormLabel>
                         <FormControl>
-                          <Textarea {...field} placeholder="وصف الخدمة أو الأتعاب..." />
+                          <Textarea {...field} value={field.value || ""} placeholder="وصف الخدمة أو الأتعاب..." />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -268,7 +294,7 @@ export default function InvoicesPage() {
                       <FormItem>
                         <FormLabel>تاريخ الاستحقاق</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <Input type="date" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -344,12 +370,9 @@ export default function InvoicesPage() {
                         <TableCell>{invoice.description || "-"}</TableCell>
                         <TableCell>
                           {invoice.dueDate ? (
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-muted-foreground" />
-                              {new Date(invoice.dueDate).toLocaleDateString('ar-SA')}
-                            </div>
+                            formatDualDate(invoice.dueDate)
                           ) : (
-                            <span className="text-muted-foreground">-</span>
+                            "-"
                           )}
                         </TableCell>
                         <TableCell>

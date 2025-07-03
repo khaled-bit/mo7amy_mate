@@ -18,6 +18,7 @@ import { type Document, type Case } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { formatDualDate } from "@/lib/utils";
 
 const uploadSchema = z.object({
   caseId: z.number().min(1, "يجب اختيار القضية"),
@@ -310,7 +311,7 @@ export default function DocumentsPage() {
                         </TableCell>
                         <TableCell>{formatFileSize(document.fileSize)}</TableCell>
                         <TableCell>
-                          {document.uploadedAt ? new Date(document.uploadedAt).toLocaleDateString('ar-SA') : "-"}
+                          {document.uploadedAt ? formatDualDate(document.uploadedAt) : "-"}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">

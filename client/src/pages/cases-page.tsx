@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { insertCaseSchema, type Case, type InsertCase, type Client } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatDualDate } from "@/lib/utils";
 
 const statusMap = {
   active: { label: "نشطة", color: "bg-green-100 text-green-800" },
@@ -371,7 +372,7 @@ export default function CasesPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {caseItem.startDate ? new Date(caseItem.startDate).toLocaleDateString('ar-SA') : "-"}
+                          {caseItem.startDate ? formatDualDate(caseItem.startDate) : "-"}
                         </TableCell>
                         <TableCell>
                           <Button 

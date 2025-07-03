@@ -18,6 +18,7 @@ import { insertSessionSchema, type Session, type InsertSession, type Case } from
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatDualDate } from "@/lib/utils";
 
 const statusMap = {
   scheduled: { label: "مجدولة", color: "bg-blue-100 text-blue-800" },
@@ -373,7 +374,7 @@ export default function SessionsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-muted-foreground" />
-                            {new Date(session.date).toLocaleDateString('ar-SA')}
+                            {formatDualDate(session.date)}
                           </div>
                         </TableCell>
                         <TableCell>

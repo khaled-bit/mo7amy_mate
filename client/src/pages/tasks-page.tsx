@@ -18,6 +18,7 @@ import { insertTaskSchema, type Task, type InsertTask, type Case, type User as U
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { formatDualDate } from "@/lib/utils";
 
 const statusMap = {
   pending: { label: "معلقة", color: "bg-gray-100 text-gray-800", icon: Clock },
@@ -328,14 +329,14 @@ export default function TasksPage() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>مسند إلى</FormLabel>
-                            <Select onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)} value={field.value?.toString()}>
+                            <Select onValueChange={(value) => field.onChange(value === "unassigned" ? undefined : parseInt(value))} value={field.value?.toString() || "unassigned"}>
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="اختر المستخدم" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">غير محدد</SelectItem>
+                                <SelectItem value="unassigned">غير محدد</SelectItem>
                                 {users?.map((userItem) => (
                                   <SelectItem key={userItem.id} value={userItem.id.toString()}>
                                     {userItem.name}
@@ -355,14 +356,14 @@ export default function TasksPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>القضية المرتبطة (اختياري)</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)} value={field.value?.toString()}>
+                          <Select onValueChange={(value) => field.onChange(value === "no-case" ? undefined : parseInt(value))} value={field.value?.toString() || "no-case"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="اختر القضية" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">غير مرتبطة</SelectItem>
+                              <SelectItem value="no-case">غير مرتبطة</SelectItem>
                               {cases?.map((caseItem) => (
                                 <SelectItem key={caseItem.id} value={caseItem.id.toString()}>
                                   {caseItem.title}
@@ -480,12 +481,9 @@ export default function TasksPage() {
                           <TableCell>{getCaseTitle(task.caseId)}</TableCell>
                           <TableCell>
                             {task.dueDate ? (
-                              <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-muted-foreground" />
-                                {new Date(task.dueDate).toLocaleDateString('ar-SA')}
-                              </div>
+                              formatDualDate(task.dueDate)
                             ) : (
-                              <span className="text-muted-foreground">-</span>
+                              "-"
                             )}
                           </TableCell>
                           <TableCell>

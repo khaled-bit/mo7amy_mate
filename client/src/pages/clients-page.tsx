@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { insertClientSchema, type Client, type InsertClient } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatDualDate } from "@/lib/utils";
 
 export default function ClientsPage() {
   const [open, setOpen] = useState(false);
@@ -307,7 +308,7 @@ export default function ClientsPage() {
                         </TableCell>
                         <TableCell>{client.nationalId || "-"}</TableCell>
                         <TableCell>
-                          {client.createdAt ? new Date(client.createdAt).toLocaleDateString('ar-SA') : "-"}
+                          {client.createdAt ? formatDualDate(client.createdAt) : "-"}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">

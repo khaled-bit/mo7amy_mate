@@ -1,74 +1,28 @@
 import Layout from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useDashboard } from "@/hooks/use-dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { 
-  Users, 
-  Briefcase, 
-  Calendar, 
-  Receipt, 
   UserPlus, 
   Plus, 
   CalendarPlus, 
   FileUp,
-  TrendingUp,
-  CheckCircle,
+  Briefcase,
+  Calendar,
   Clock
 } from "lucide-react";
 import { Link } from "wouter";
 
-interface DashboardStats {
-  totalClients: number;
-  activeCases: number;
-  pendingInvoices: number;
-  thisWeekSessions: number;
-}
-
 export default function HomePage() {
   const { user } = useAuth();
-  
-  const { data: stats, isLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
-  });
+  const { statCards, isLoading } = useDashboard();
 
   const quickActions = [
     { icon: UserPlus, label: "عميل جديد", href: "/clients" },
     { icon: Plus, label: "قضية جديدة", href: "/cases" },
     { icon: CalendarPlus, label: "جدولة جلسة", href: "/sessions" },
     { icon: FileUp, label: "رفع مستند", href: "/documents" },
-  ];
-
-  const statCards = [
-    {
-      title: "إجمالي العملاء",
-      value: stats?.totalClients || 0,
-      icon: Users,
-      change: "+12% من الشهر الماضي",
-      color: "blue"
-    },
-    {
-      title: "القضايا النشطة",
-      value: stats?.activeCases || 0,
-      icon: Briefcase,
-      change: "5 تحتاج متابعة",
-      color: "amber"
-    },
-    {
-      title: "الجلسات هذا الأسبوع",
-      value: stats?.thisWeekSessions || 0,
-      icon: Calendar,
-      change: "3 غداً",
-      color: "green"
-    },
-    {
-      title: "الفواتير المعلقة",
-      value: `${stats?.pendingInvoices || 0}`,
-      icon: Receipt,
-      change: "جنيه مصري",
-      color: "red"
-    }
   ];
 
   if (isLoading) {

@@ -72,6 +72,7 @@ export interface IStorage {
 
   // Dashboard Stats
   getDashboardStats(userId: number, role: string): Promise<any>;
+  getSidebarStats(userId: number, role: string): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -342,6 +343,21 @@ export class DatabaseStorage implements IStorage {
       activeCases: activeCases[0].count,
       pendingInvoices: pendingInvoices[0].total,
       thisWeekSessions: thisWeekSessions[0].count,
+    };
+  }
+
+  // Sidebar Stats
+  async getSidebarStats(userId: number, role: string) {
+    const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
+    const activeCases = await db.select({ count: sql<number>`count(*)` }).from(cases).where(eq(cases.status, 'active'));
+    const pendingTasks = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(eq(tasks.status, 'pending'));
+    const pendingInvoices = await db.select({ count: sql<number>`count(*)` }).from(invoices).where(eq(invoices.paid, false));
+
+    return {
+      totalClients: totalClients[0].count,
+      activeCases: activeCases[0].count,
+      pendingTasks: pendingTasks[0].count,
+      pendingInvoices: pendingInvoices[0].count,
     };
   }
 }

@@ -6,10 +6,51 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, Download, FileText, TrendingUp, Users, Briefcase, Receipt, CheckSquare } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+interface DashboardStats {
+  totalClients: number;
+  activeCases: number;
+  pendingInvoices: number;
+  thisWeekSessions: number;
+}
+
+interface ReportsStats {
+  totalUsers: number;
+  completedTasks: number;
+  totalRevenue: number;
+  casesByStatus: Array<{
+    status: string;
+    count: number;
+    percentage: number;
+  }>;
+}
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("month");
   const [selectedReport, setSelectedReport] = useState("summary");
+
+  // Fetch dashboard stats for reports
+  const { data: dashboardStats, isLoading } = useQuery<DashboardStats>({
+    queryKey: ["/api/dashboard/stats"],
+  });
+
+  // Fetch additional data
+  const { data: clientsData = [] } = useQuery<any[]>({
+    queryKey: ["/api/clients"],
+  });
+
+  const { data: casesData = [] } = useQuery<any[]>({
+    queryKey: ["/api/cases"],
+  });
+
+  const { data: tasksData = [] } = useQuery<any[]>({
+    queryKey: ["/api/tasks"],
+  });
+
+  const { data: invoicesData = [] } = useQuery<any[]>({
+    queryKey: ["/api/invoices"],
+  });
 
   const reportTypes = [
     { value: "summary", label: "التقرير الشامل", icon: BarChart3 },
@@ -27,10 +68,17 @@ export default function ReportsPage() {
     { value: "custom", label: "فترة مخصصة" },
   ];
 
+  // Calculate completed tasks count
+  const completedTasksCount = tasksData?.filter((task: any) => task.status === 'completed').length || 0;
+  
+  // Calculate total revenue from paid invoices
+  const totalRevenue = invoicesData?.filter((invoice: any) => invoice.paid)
+    .reduce((total: number, invoice: any) => total + invoice.amount, 0) || 0;
+
   const summaryStats = [
     {
       title: "إجمالي العملاء",
-      value: "87",
+      value: dashboardStats?.totalClients?.toString() || "0",
       change: "+12%",
       trend: "up",
       icon: Users,
@@ -38,7 +86,7 @@ export default function ReportsPage() {
     },
     {
       title: "القضايا النشطة",
-      value: "34",
+      value: dashboardStats?.activeCases?.toString() || "0",
       change: "+5%",
       trend: "up",
       icon: Briefcase,
@@ -46,7 +94,7 @@ export default function ReportsPage() {
     },
     {
       title: "الإيرادات",
-      value: "245,000 جنيه",
+      value: `${totalRevenue.toLocaleString()} جنيه`,
       change: "+18%",
       trend: "up",
       icon: Receipt,
@@ -54,7 +102,7 @@ export default function ReportsPage() {
     },
     {
       title: "المهام المكتملة",
-      value: "128",
+      value: completedTasksCount.toString(),
       change: "+22%",
       trend: "up",
       icon: CheckSquare,
@@ -62,21 +110,52 @@ export default function ReportsPage() {
     }
   ];
 
-  const casesByStatus = [
-    { status: "نشطة", count: 34, percentage: 45, color: "bg-blue-500" },
-    { status: "معلقة", count: 18, percentage: 24, color: "bg-yellow-500" },
-    { status: "مكتملة", count: 20, percentage: 26, color: "bg-green-500" },
-    { status: "ملغية", count: 4, percentage: 5, color: "bg-red-500" },
+  // Calculate cases by status dynamically
+  const getCasesByStatus = () => {
+    if (!casesData) return [];
+    
+    const statusCounts = casesData.reduce((acc: any, caseItem: any) => {
+      acc[caseItem.status] = (acc[caseItem.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const total = casesData.length;
+    const statusMapping: any = {
+      'active': { label: 'نشطة', color: 'bg-blue-500' },
+      'pending': { label: 'معلقة', color: 'bg-yellow-500' },
+      'completed': { label: 'مكتملة', color: 'bg-green-500' },
+      'cancelled': { label: 'ملغية', color: 'bg-red-500' },
+    };
+
+    return Object.entries(statusCounts).map(([status, count]: [string, any]) => ({
+      status: statusMapping[status]?.label || status,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      color: statusMapping[status]?.color || 'bg-gray-500'
+    }));
+  };
+
+  const casesByStatus = getCasesByStatus();
+
+  // Mock monthly revenue - in a real app, this would come from an API
+  const monthlyRevenue = [
+    { month: "يناير", amount: Math.floor(totalRevenue * 0.15) },
+    { month: "فبراير", amount: Math.floor(totalRevenue * 0.18) },
+    { month: "مارس", amount: Math.floor(totalRevenue * 0.16) },
+    { month: "أبريل", amount: Math.floor(totalRevenue * 0.20) },
+    { month: "مايو", amount: Math.floor(totalRevenue * 0.17) },
+    { month: "يونيو", amount: Math.floor(totalRevenue * 0.14) },
   ];
 
-  const monthlyRevenue = [
-    { month: "يناير", amount: 45000 },
-    { month: "فبراير", amount: 52000 },
-    { month: "مارس", amount: 48000 },
-    { month: "أبريل", amount: 61000 },
-    { month: "مايو", amount: 58000 },
-    { month: "يونيو", amount: 65000 },
-  ];
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

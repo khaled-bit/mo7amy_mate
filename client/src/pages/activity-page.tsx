@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Search, History, User, FileText, Users, Briefcase, Calendar, Receipt, CheckSquare } from "lucide-react";
 import { type ActivityLog } from "@shared/schema";
+import { formatDualDate } from "@/lib/utils";
 
 const actionIcons = {
   login: User,
@@ -87,7 +88,7 @@ export default function ActivityPage() {
     const diffInDays = Math.floor(diffInHours / 24);
     if (diffInDays < 7) return `منذ ${diffInDays} يوم`;
     
-    return date.toLocaleDateString('ar-SA');
+    return formatDualDate(dateString);
   };
 
   const activityStats = {

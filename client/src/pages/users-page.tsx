@@ -18,6 +18,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
+import { formatDualDate } from "@/lib/utils";
 
 const createUserSchema = insertUserSchema.extend({
   confirmPassword: z.string(),
@@ -451,7 +452,7 @@ export default function UsersPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {user.createdAt ? new Date(user.createdAt).toLocaleDateString('ar-SA') : "-"}
+                            {user.createdAt ? formatDualDate(user.createdAt) : "-"}
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-2">
