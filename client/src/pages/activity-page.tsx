@@ -5,14 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, History, User, FileText, Users, Briefcase, Calendar, Receipt, CheckSquare } from "lucide-react";
-import { type ActivityLog } from "@shared/schema";
+import { Search, History, User as UserIcon, FileText, Users, Briefcase, Calendar, Receipt, CheckSquare } from "lucide-react";
+import { type ActivityLog, type User } from "@shared/schema";
 import { formatDualDate } from "@/lib/utils";
 
 const actionIcons = {
-  login: User,
-  logout: User,
-  register: User,
+  login: UserIcon,
+  logout: UserIcon,
+  register: UserIcon,
   create_client: Users,
   update_client: Users,
   delete_client: Users,
@@ -22,7 +22,7 @@ const actionIcons = {
   upload_document: FileText,
   create_invoice: Receipt,
   create_task: CheckSquare,
-  create_user: User,
+  create_user: UserIcon,
 };
 
 const actionColors = {
@@ -56,6 +56,23 @@ export default function ActivityPage() {
       return res.json();
     },
   });
+
+  const { data: users } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+
+  // Create a mapping of user IDs to names
+  const userMap = users?.reduce((acc, user) => {
+    acc[user.id] = user.name;
+    return acc;
+  }, {} as Record<number, string>) || {};
 
   const filteredActivities = activities?.filter(activity => {
     const matchesSearch = activity.details?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,7 +122,7 @@ export default function ActivityPage() {
     }).length,
   };
 
-  const uniqueActions = [...new Set(activities?.map(a => a.action) || [])];
+  const uniqueActions = Array.from(new Set(activities?.map(a => a.action) || []));
 
   return (
     <Layout>
@@ -236,7 +253,7 @@ export default function ActivityPage() {
                             {activity.action}
                           </Badge>
                           <span className="text-sm text-muted-foreground">
-                            {formatTimeAgo(activity.createdAt!)}
+                            {activity.createdAt ? formatTimeAgo(activity.createdAt.toString()) : ''}
                           </span>
                         </div>
                         
@@ -245,14 +262,14 @@ export default function ActivityPage() {
                         </p>
                         
                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <span>المستخدم: {activity.userId || "النظام"}</span>
+                          <span>المستخدم: {activity.userId ? userMap[activity.userId] || `المستخدم ${activity.userId}` : "النظام"}</span>
                           <span>النوع: {activity.targetType}</span>
                           <span>المعرف: #{activity.targetId}</span>
                         </div>
                       </div>
                       
                       <div className="text-xs text-muted-foreground text-left">
-                        {new Date(activity.createdAt!).toLocaleString('ar-SA')}
+                        {activity.createdAt ? new Date(activity.createdAt).toLocaleString('ar-SA') : ''}
                       </div>
                     </div>
                   );

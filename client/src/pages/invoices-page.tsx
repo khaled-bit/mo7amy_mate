@@ -109,17 +109,28 @@ export default function InvoicesPage() {
   });
 
   const onSubmit = (data: InsertInvoice) => {
+    // Transform the data to ensure proper types
+    const transformedData = {
+      ...data,
+      amount: data.amount ? data.amount.toString() : "0",
+      caseId: data.caseId || undefined,
+      dueDate: data.dueDate || undefined,
+      paidDate: data.paidDate || undefined
+    };
+    
+    console.log('📝 Submitting invoice data:', transformedData);
+    
     if (editingInvoice) {
-      updateMutation.mutate({ id: editingInvoice.id, data });
+      updateMutation.mutate({ id: editingInvoice.id, data: transformedData });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(transformedData);
     }
   };
 
   const handleEdit = (invoice: Invoice) => {
     setEditingInvoice(invoice);
     form.reset({
-      caseId: invoice.caseId,
+      caseId: invoice.caseId || undefined,
       amount: invoice.amount,
       description: invoice.description || "",
       paid: invoice.paid,
@@ -129,9 +140,19 @@ export default function InvoicesPage() {
     setOpen(true);
   };
 
+  const [markPaidDialog, setMarkPaidDialog] = useState<{ open: boolean; invoiceId: number | null }>({
+    open: false,
+    invoiceId: null
+  });
+
   const handleMarkPaid = (id: number) => {
-    if (confirm("هل تريد وضع علامة على هذه الفاتورة كمدفوعة؟")) {
-      markPaidMutation.mutate(id);
+    setMarkPaidDialog({ open: true, invoiceId: id });
+  };
+
+  const confirmMarkPaid = () => {
+    if (markPaidDialog.invoiceId !== null) {
+      markPaidMutation.mutate(markPaidDialog.invoiceId);
+      setMarkPaidDialog({ open: false, invoiceId: null });
     }
   };
 
@@ -140,6 +161,7 @@ export default function InvoicesPage() {
   ) || [];
 
   const getCaseTitle = (caseId: number) => {
+    if (caseId === 0) return "غير مرتبطة بقضية";
     return cases?.find(c => c.id === caseId)?.title || "غير محدد";
   };
 
@@ -357,7 +379,7 @@ export default function InvoicesPage() {
                     filteredInvoices.map((invoice) => (
                       <TableRow key={invoice.id}>
                         <TableCell className="font-medium">#{invoice.id}</TableCell>
-                        <TableCell>{getCaseTitle(invoice.caseId)}</TableCell>
+                        <TableCell>{getCaseTitle(invoice.caseId || 0)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <DollarSign className="w-4 h-4 text-muted-foreground" />
@@ -407,6 +429,36 @@ export default function InvoicesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Mark as Paid Confirmation Dialog */}
+      <Dialog open={markPaidDialog.open} onOpenChange={(open) => setMarkPaidDialog({ open, invoiceId: null })}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>تأكيد الدفع</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-muted-foreground">
+              هل تريد وضع علامة على هذه الفاتورة كمدفوعة؟
+            </p>
+            <div className="flex gap-2">
+              <Button 
+                onClick={confirmMarkPaid}
+                disabled={markPaidMutation.isPending}
+                className="flex-1"
+              >
+                {markPaidMutation.isPending ? "جاري التحديث..." : "تأكيد"}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setMarkPaidDialog({ open: false, invoiceId: null })}
+                className="flex-1"
+              >
+                إلغاء
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

@@ -6,6 +6,7 @@ import { insertClientSchema, insertCaseSchema, insertSessionSchema, insertInvoic
 import multer from "multer";
 import path from "path";
 import { promises as fs } from "fs";
+import { createReadStream } from "fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { eq, inArray, desc } from "drizzle-orm";
 import { cases, documents } from "@shared/schema";
@@ -307,6 +308,7 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/documents", requireAuth, async (req, res) => {
     try {
       const documents = await storage.getAllDocuments();
+      console.log('All documents:', documents.map(d => ({ id: d.id, title: d.title, caseId: d.caseId })));
       res.json(documents);
     } catch (error) {
       res.status(500).json({ message: "خطأ في استرجاع المستندات" });
@@ -355,7 +357,11 @@ ${JSON.stringify(caseDetails, null, 2)}
 
   app.post("/api/invoices", requireAuth, async (req, res) => {
     try {
+      console.log('📝 Invoice creation request body:', req.body);
+      
       const invoiceData = insertInvoiceSchema.parse(req.body);
+      console.log('✅ Parsed invoice data:', invoiceData);
+      
       const invoice = await storage.createInvoice({
         ...invoiceData,
         createdBy: req.user!.id
@@ -366,12 +372,56 @@ ${JSON.stringify(caseDetails, null, 2)}
         action: "create_invoice",
         targetType: "invoice",
         targetId: invoice.id,
-        details: `تم إنشاء فاتورة بمبلغ ${invoice.amount} ريال`,
+        details: `تم إنشاء فاتورة بمبلغ ${invoice.amount} جنيه`,
       });
       
       res.status(201).json(invoice);
     } catch (error) {
-      res.status(400).json({ message: "بيانات غير صحيحة" });
+      console.error('❌ Invoice creation error:', error);
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          message: "بيانات غير صحيحة", 
+          details: error.message 
+        });
+      } else {
+        res.status(400).json({ message: "بيانات غير صحيحة" });
+      }
+    }
+  });
+
+  app.put("/api/invoices/:id", requireAuth, async (req, res) => {
+    try {
+      const invoiceId = parseInt(req.params.id);
+      console.log('📝 Invoice update request for ID:', invoiceId, 'body:', req.body);
+      
+      const invoiceData = insertInvoiceSchema.partial().parse(req.body);
+      console.log('✅ Parsed update data:', invoiceData);
+      
+      const updatedInvoice = await storage.updateInvoice(invoiceId, invoiceData);
+      
+      if (!updatedInvoice) {
+        return res.status(404).json({ message: "الفاتورة غير موجودة" });
+      }
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "update_invoice",
+        targetType: "invoice",
+        targetId: invoiceId,
+        details: `تم تحديث فاتورة رقم ${invoiceId}`,
+      });
+      
+      res.json(updatedInvoice);
+    } catch (error) {
+      console.error('❌ Invoice update error:', error);
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          message: "خطأ في تحديث الفاتورة", 
+          details: error.message 
+        });
+      } else {
+        res.status(400).json({ message: "خطأ في تحديث الفاتورة" });
+      }
     }
   });
 
@@ -701,22 +751,31 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/clients/:id/documents", requireAuth, async (req, res) => {
     try {
       const clientId = parseInt(req.params.id);
+      console.log('🔍 Fetching documents for client ID:', clientId);
       
       // Get all cases for this client
-      const clientCases = await db.select().from(cases).where(eq(cases.clientId, clientId));
+      const allCases = await storage.getAllCases();
+      console.log('📋 All cases:', allCases.map(c => ({ id: c.id, title: c.title, clientId: c.clientId })));
+      
+      const clientCases = allCases.filter(c => c.clientId === clientId);
+      console.log('👤 Client cases:', clientCases.map(c => ({ id: c.id, title: c.title })));
+      
       const caseIds = clientCases.map(c => c.id);
       
       if (caseIds.length === 0) {
+        console.log('❌ No cases found for client');
         return res.json([]);
       }
       
-      // Get all documents for these cases
-      const clientDocuments = await db.select().from(documents)
-        .where(inArray(documents.caseId, caseIds))
-        .orderBy(desc(documents.uploadedAt));
+      // Get all documents and filter by client's cases
+      const allDocuments = await storage.getAllDocuments();
+      console.log('📄 All documents:', allDocuments.map(d => ({ id: d.id, title: d.title, caseId: d.caseId, description: d.description })));
       
-      // Get case titles for each document
-      const documentsWithCaseInfo = clientDocuments.map((doc: any) => {
+      const clientDocuments = allDocuments.filter(doc => caseIds.includes(doc.caseId));
+      console.log('📄 Client documents:', clientDocuments.map(d => ({ id: d.id, title: d.title, caseId: d.caseId })));
+      
+      // Add case titles to documents
+      const documentsWithCaseInfo = clientDocuments.map(doc => {
         const relatedCase = clientCases.find(c => c.id === doc.caseId);
         return {
           ...doc,
@@ -724,9 +783,360 @@ ${JSON.stringify(caseDetails, null, 2)}
         };
       });
       
+      // Sort by upload date (newest first)
+      documentsWithCaseInfo.sort((a, b) => {
+        const dateA = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+        const dateB = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      
+      console.log('✅ Final documents with case info:', documentsWithCaseInfo.map(d => ({ 
+        id: d.id, 
+        title: d.title, 
+        caseId: d.caseId, 
+        caseTitle: d.caseTitle,
+        description: d.description,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        uploadedAt: d.uploadedAt
+      })));
+      
+
+      
       res.json(documentsWithCaseInfo);
     } catch (error) {
+      console.error('❌ Error fetching client documents:', error);
       res.status(500).json({ message: "خطأ في استرجاع المستندات" });
+    }
+  });
+
+  // Document download endpoint
+  app.get("/api/documents/:id/download", requireAuth, async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      console.log('🔍 Downloading document ID:', documentId);
+      
+      const document = await storage.getDocument(documentId);
+      
+      if (!document) {
+        console.log('❌ Document not found for ID:', documentId);
+        const allDocuments = await storage.getAllDocuments();
+        console.log('Available documents:', allDocuments.map(d => ({ id: d.id, title: d.title })));
+        return res.status(404).json({ message: "المستند غير موجود" });
+      }
+      
+      console.log('📄 Document found:', { id: document.id, title: document.title, filePath: document.filePath });
+      
+      // Handle both absolute and relative file paths
+      let filePath = document.filePath;
+      console.log('🔍 Original filePath:', filePath);
+      
+      if (path.isAbsolute(filePath)) {
+        console.log('📁 Trying absolute path:', filePath);
+        try {
+          await fs.access(filePath);
+          console.log('✅ Absolute path works');
+        } catch (error) {
+          console.log('❌ Absolute path failed:', error instanceof Error ? error.message : 'Unknown error');
+          // If absolute path doesn't work, try relative path in uploads
+          const fileName = path.basename(filePath);
+          filePath = path.join(process.cwd(), 'uploads', fileName);
+          console.log('📁 Trying fallback path:', filePath);
+          try {
+            await fs.access(filePath);
+            console.log('✅ Fallback path works');
+          } catch (fallbackError) {
+            console.log('❌ Fallback path failed:', fallbackError instanceof Error ? fallbackError.message : 'Unknown error');
+            return res.status(404).json({ message: "الملف غير موجود" });
+          }
+        }
+      } else {
+        filePath = path.join(process.cwd(), filePath);
+        console.log('📁 Trying relative path:', filePath);
+        try {
+          await fs.access(filePath);
+          console.log('✅ Relative path works');
+        } catch (error) {
+          console.log('❌ Relative path failed:', error instanceof Error ? error.message : 'Unknown error');
+          return res.status(404).json({ message: "الملف غير موجود" });
+        }
+      }
+      
+      console.log('🎯 Final filePath:', filePath);
+      
+      // Set headers for download
+      const originalFileName = document.title;
+      
+      // Get file extension from MIME type
+      let fileExtension = '';
+      if (document.fileType) {
+        const mimeToExt: { [key: string]: string } = {
+          'application/pdf': '.pdf',
+          'application/msword': '.doc',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+          'image/jpeg': '.jpg',
+          'image/png': '.png',
+          'text/plain': '.txt',
+          'application/vnd.ms-excel': '.xls',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+        };
+        fileExtension = mimeToExt[document.fileType] || '';
+      }
+      
+      // If no extension found from MIME type, try to get it from the file path
+      if (!fileExtension && document.filePath) {
+        fileExtension = path.extname(document.filePath);
+      }
+      
+      const fileName = originalFileName + fileExtension;
+      
+      console.log('📝 Filename generation:', {
+        originalFileName,
+        fileExtension,
+        finalFileName: fileName,
+        fileType: document.fileType
+      });
+      
+      // Encode filename for proper download with Arabic support
+      const encodedFileName = encodeURIComponent(fileName);
+      console.log('🔤 Encoded filename:', encodedFileName);
+      
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`);
+      res.setHeader('Content-Type', document.fileType || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      // Stream the file
+      const fileStream = createReadStream(filePath);
+      fileStream.on('error', (error) => {
+        console.error('❌ File stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: "خطأ في قراءة الملف" });
+        }
+      });
+      
+      // Handle response errors
+      res.on('error', (error) => {
+        console.error('❌ Response error:', error);
+      });
+      
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error('❌ Download error:', error);
+      res.status(500).json({ message: "خطأ في تحميل المستند", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Document view endpoint
+  app.get("/api/documents/:id/view", requireAuth, async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      console.log('🔍 Viewing document ID:', documentId);
+      
+      const document = await storage.getDocument(documentId);
+      
+      if (!document) {
+        console.log('❌ Document not found for ID:', documentId);
+        const allDocuments = await storage.getAllDocuments();
+        console.log('Available documents for view:', allDocuments.map(d => ({ id: d.id, title: d.title })));
+        return res.status(404).json({ message: "المستند غير موجود" });
+      }
+      
+      console.log('📄 Document found:', { id: document.id, title: document.title, filePath: document.filePath });
+      
+      // Handle both absolute and relative file paths
+      let filePath = document.filePath;
+      console.log('🔍 Original filePath:', filePath);
+      
+      if (path.isAbsolute(filePath)) {
+        console.log('📁 Trying absolute path:', filePath);
+        try {
+          await fs.access(filePath);
+          console.log('✅ Absolute path works');
+        } catch (error) {
+          console.log('❌ Absolute path failed:', error instanceof Error ? error.message : 'Unknown error');
+          // If absolute path doesn't work, try relative path in uploads
+          const fileName = path.basename(filePath);
+          filePath = path.join(process.cwd(), 'uploads', fileName);
+          console.log('📁 Trying fallback path:', filePath);
+          try {
+            await fs.access(filePath);
+            console.log('✅ Fallback path works');
+          } catch (fallbackError) {
+            console.log('❌ Fallback path failed:', fallbackError instanceof Error ? fallbackError.message : 'Unknown error');
+            return res.status(404).json({ message: "الملف غير موجود" });
+          }
+        }
+      } else {
+        filePath = path.join(process.cwd(), filePath);
+        console.log('📁 Trying relative path:', filePath);
+        try {
+          await fs.access(filePath);
+          console.log('✅ Relative path works');
+        } catch (error) {
+          console.log('❌ Relative path failed:', error instanceof Error ? error.message : 'Unknown error');
+          return res.status(404).json({ message: "الملف غير موجود" });
+        }
+      }
+      
+      console.log('🎯 Final filePath:', filePath);
+      
+      // Set headers for viewing
+      res.setHeader('Content-Type', document.fileType || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      // Stream the file
+      const fileStream = createReadStream(filePath);
+      fileStream.on('error', (error) => {
+        console.error('❌ File stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: "خطأ في قراءة الملف" });
+        }
+      });
+      
+      // Handle response errors
+      res.on('error', (error) => {
+        console.error('❌ Response error:', error);
+      });
+      
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error('❌ View error:', error);
+      res.status(500).json({ message: "خطأ في عرض المستند", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Test endpoint to check file paths
+  app.get("/api/test/file-path/:id", requireAuth, async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      console.log('🧪 Testing file path for document ID:', documentId);
+      
+      const document = await storage.getDocument(documentId);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      const originalPath = document.filePath;
+      const isAbsolute = path.isAbsolute(originalPath);
+      const fileName = path.basename(originalPath);
+      const fallbackPath = path.join(process.cwd(), 'uploads', fileName);
+      const relativePath = path.join(process.cwd(), originalPath);
+      
+      // Test file existence
+      let absoluteExists = false;
+      let fallbackExists = false;
+      let relativeExists = false;
+      
+      try {
+        await fs.access(originalPath);
+        absoluteExists = true;
+      } catch {}
+      
+      try {
+        await fs.access(fallbackPath);
+        fallbackExists = true;
+      } catch {}
+      
+      try {
+        await fs.access(relativePath);
+        relativeExists = true;
+      } catch {}
+      
+      res.json({
+        document: {
+          id: document.id,
+          title: document.title,
+          originalPath,
+          isAbsolute
+        },
+        paths: {
+          original: originalPath,
+          fallback: fallbackPath,
+          relative: relativePath
+        },
+        exists: {
+          absolute: absoluteExists,
+          fallback: fallbackExists,
+          relative: relativeExists
+        },
+        currentDir: process.cwd(),
+        uploadsDir: path.join(process.cwd(), 'uploads')
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Test failed", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Debug endpoint to check available documents
+  app.get("/api/debug/documents", requireAuth, async (req, res) => {
+    try {
+      const documents = await storage.getAllDocuments();
+      res.json({
+        count: documents.length,
+        documents: documents.map(d => ({ 
+          id: d.id, 
+          title: d.title, 
+          caseId: d.caseId, 
+          filePath: d.filePath,
+          description: d.description,
+          fileSize: d.fileSize,
+          fileType: d.fileType,
+          uploadedAt: d.uploadedAt
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في استرجاع المستندات", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Debug endpoint to check clients and their cases
+  app.get("/api/debug/clients-cases", requireAuth, async (req, res) => {
+    try {
+      const clients = await storage.getAllClients();
+      const cases = await storage.getAllCases();
+      const documents = await storage.getAllDocuments();
+      
+      const clientsWithCases = clients.map(client => {
+        const clientCases = cases.filter(c => c.clientId === client.id);
+        const caseIds = clientCases.map(c => c.id);
+        const clientDocuments = documents.filter(d => caseIds.includes(d.caseId));
+        
+        return {
+          id: client.id,
+          name: client.name,
+          cases: clientCases.map(c => ({
+            id: c.id,
+            title: c.title,
+            documents: clientDocuments.filter(d => d.caseId === c.id).map(d => ({
+              id: d.id,
+              title: d.title,
+              description: d.description,
+              fileSize: d.fileSize,
+              fileType: d.fileType,
+              uploadedAt: d.uploadedAt
+            }))
+          }))
+        };
+      });
+      
+      res.json({
+        totalClients: clients.length,
+        totalCases: cases.length,
+        totalDocuments: documents.length,
+        clientsWithCases,
+        rawDocuments: documents.map(d => ({
+          id: d.id,
+          title: d.title,
+          caseId: d.caseId,
+          description: d.description,
+          fileSize: d.fileSize,
+          fileType: d.fileType,
+          uploadedAt: d.uploadedAt,
+          filePath: d.filePath
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في استرجاع البيانات", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 

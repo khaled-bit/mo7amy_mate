@@ -33,8 +33,21 @@ export default function ClientsPage() {
 
   const { data: clientDocuments, isLoading: documentsLoading } = useQuery<any[]>({
     queryKey: ["/api/clients", selectedClient?.id, "documents"],
+    queryFn: async () => {
+      if (!selectedClient) return [];
+      const response = await fetch(`/api/clients/${selectedClient.id}/documents`);
+      if (!response.ok) throw new Error('Failed to fetch documents');
+      return response.json();
+    },
     enabled: !!selectedClient && documentsOpen,
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 0, // Don't cache
   });
+
+  // Debug: Log the documents data
+  console.log('🔍 Frontend - Selected client:', selectedClient);
+  console.log('📄 Frontend - Client documents:', clientDocuments);
+  console.log('📄 Frontend - Documents loading:', documentsLoading);
 
   const form = useForm<InsertClient>({
     resolver: zodResolver(insertClientSchema),

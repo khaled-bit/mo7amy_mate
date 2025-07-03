@@ -331,7 +331,7 @@ export default function DocumentsPage() {
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => window.open(document.filePath)}
+                              onClick={() => window.open(`/api/documents/${document.id}/download`, '_blank')}
                             >
                               <Download className="w-4 h-4" />
                             </Button>

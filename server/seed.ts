@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users } from "@shared/schema";
+import { users, clients, cases, documents } from "@shared/schema";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -84,6 +84,101 @@ async function seedDatabase() {
       }).returning();
 
       console.log(`✅ Created user: ${insertedUser.username} (${insertedUser.role})`);
+    }
+
+    // Check if we need to create sample data
+    const existingClients = await db.select().from(clients);
+    if (existingClients.length === 0) {
+      console.log("👥 Creating sample clients...");
+      
+      const [client1] = await db.insert(clients).values({
+        name: "أحمد محمد علي",
+        phone: "+966501234567",
+        email: "ahmed@example.com",
+        address: "الرياض، المملكة العربية السعودية",
+        nationalId: "1234567890",
+        notes: "عميل جديد",
+        createdBy: 1,
+      }).returning();
+
+      const [client2] = await db.insert(clients).values({
+        name: "فاطمة عبدالله",
+        phone: "+966507654321",
+        email: "fatima@example.com",
+        address: "جدة، المملكة العربية السعودية",
+        nationalId: "0987654321",
+        notes: "عميل منتظم",
+        createdBy: 1,
+      }).returning();
+
+      console.log("✅ Created sample clients");
+
+      console.log("⚖️ Creating sample cases...");
+      
+      const [case1] = await db.insert(cases).values({
+        title: "قضية تجارية - شركة التقنية المتقدمة",
+        type: "commercial",
+        court: "محكمة التجارة",
+        status: "active",
+        clientId: client1.id,
+        description: "نزاع تجاري حول عقد توريد",
+        createdBy: 1,
+      }).returning();
+
+      const [case2] = await db.insert(cases).values({
+        title: "قضية عمالية - محمد السيد",
+        type: "labor",
+        court: "محكمة العمل",
+        status: "active",
+        clientId: client2.id,
+        description: "مطالبة بإنهاء خدمة تعسفي",
+        createdBy: 1,
+      }).returning();
+
+      console.log("✅ Created sample cases");
+
+      console.log("📄 Creating sample documents...");
+      
+      await db.insert(documents).values([
+        {
+          caseId: case1.id,
+          title: "عقد التوريد الأصلي",
+          filePath: "uploads/sample-contract.pdf",
+          fileSize: 1024000,
+          fileType: "application/pdf",
+          description: "نسخة من عقد التوريد الموقع",
+          uploadedBy: 1,
+        },
+        {
+          caseId: case1.id,
+          title: "فاتورة المدفوعات",
+          filePath: "uploads/sample-invoice.pdf",
+          fileSize: 512000,
+          fileType: "application/pdf",
+          description: "فاتورة المدفوعات المقدمة",
+          uploadedBy: 1,
+        },
+        {
+          caseId: case2.id,
+          title: "عقد العمل",
+          filePath: "uploads/sample-employment.pdf",
+          fileSize: 768000,
+          fileType: "application/pdf",
+          description: "عقد العمل الأصلي",
+          uploadedBy: 1,
+        },
+        {
+          caseId: case2.id,
+          title: "إشعار الفصل",
+          filePath: "uploads/sample-termination.pdf",
+          fileSize: 256000,
+          fileType: "application/pdf",
+          description: "إشعار الفصل من العمل",
+          uploadedBy: 1,
+        }
+      ]);
+
+      console.log("✅ Created sample documents");
     }
 
     console.log("\n🎉 Database seeding completed successfully!");
