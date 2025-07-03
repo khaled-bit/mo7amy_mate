@@ -18,6 +18,7 @@ import ReportsPage from "@/pages/reports-page";
 import UsersPage from "@/pages/users-page";
 import ActivityPage from "@/pages/activity-page";
 import SettingsPage from "@/pages/settings-page";
+import CaseDetailsPage from "@/pages/case-details-page";
 
 function Router() {
   return (
@@ -33,6 +34,7 @@ function Router() {
       <ProtectedRoute path="/users" component={UsersPage} />
       <ProtectedRoute path="/activity" component={ActivityPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
+      <ProtectedRoute path="/cases/:id" component={CaseDetailsPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

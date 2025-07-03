@@ -1,6 +1,5 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
-import Header from "@/components/header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,7 +41,6 @@ export default function SettingsPage() {
   return (
     <div dir="rtl" className="text-right">
     <Layout>
-      <Header title="الإعدادات" subtitle="إدارة إعدادات النظام والملف الشخصي" />
         <div className="max-w-3xl mx-auto mt-8">
           <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className="grid grid-cols-4 bg-gray-100 rounded-lg mb-8">
@@ -267,12 +265,12 @@ export default function SettingsPage() {
                         <option value="USD">دولار أمريكي (USD)</option>
                       </select>
                       </div>
-                    <div>
+                        <div>
                       <Label>توقيت النظام</Label>
                       <input type="time" value={systemSettings.systemTime} onChange={e => setSystemSettings(s => ({ ...s, systemTime: e.target.value }))} className="w-full border rounded px-2 py-1 text-right" />
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
+                  </CardContent>
                 </Card>
             </TabsContent>
         </Tabs>

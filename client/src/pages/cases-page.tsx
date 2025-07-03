@@ -1,23 +1,24 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
+import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, Briefcase } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { insertCaseSchema, type Case, type InsertCase, type Client } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
+import { type Case, type InsertCase, type Client, insertCaseSchema } from "@shared/schema";
+import { Link, useLocation } from "wouter";
 
 const statusMap = {
   active: { label: "نشطة", color: "bg-green-100 text-green-800" },
@@ -31,6 +32,9 @@ export default function CasesPage() {
   const [editingCase, setEditingCase] = useState<Case | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: cases, isLoading } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
@@ -57,34 +61,54 @@ export default function CasesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertCase) => {
-      const res = await apiRequest("POST", "/api/cases", data);
-      return res.json();
+      const response = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في إنشاء القضية");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      toast({ title: "تم إنشاء القضية بنجاح" });
       setOpen(false);
       form.reset();
-      toast({ title: "تم إضافة القضية بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في إضافة القضية", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في إنشاء القضية", description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertCase> }) => {
-      const res = await apiRequest("PUT", `/api/cases/${id}`, data);
-      return res.json();
+      const response = await fetch(`/api/cases/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في تحديث القضية");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
-      setOpen(false);
-      setEditingCase(null);
-      form.reset();
       toast({ title: "تم تحديث القضية بنجاح" });
+      setOpen(false);
+      form.reset();
+      setEditingCase(null);
     },
-    onError: () => {
-      toast({ title: "خطأ في تحديث القضية", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في تحديث القضية", description: error.message, variant: "destructive" });
     },
   });
 
@@ -124,8 +148,6 @@ export default function CasesPage() {
 
   return (
     <Layout>
-      <Header title="إدارة القضايا" subtitle="إدارة القضايا القانونية ومتابعتها" />
-      
       <div className="space-y-6 mt-6">
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">
@@ -354,7 +376,7 @@ export default function CasesPage() {
                   {filteredCases.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <Eye className="w-12 h-12 mx-auto mb-4 opacity-50" />
                         <p>لا توجد قضايا</p>
                         <p className="text-sm">ابدأ بإضافة قضية جديدة</p>
                       </TableCell>
@@ -382,6 +404,24 @@ export default function CasesPage() {
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setLocation(`/cases/${caseItem.id}`)}
+                            className="ml-2"
+                          >
+                            تفاصيل
+                          </Button>
+                          {user && (user.role === 'admin' || user.role === 'lawyer') && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setLocation(`/cases/${caseItem.id}`)}
+                              className="ml-2"
+                            >
+                              تشغيل التحليل الذكي
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

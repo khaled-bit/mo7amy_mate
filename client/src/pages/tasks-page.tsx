@@ -1,5 +1,4 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -163,8 +162,6 @@ export default function TasksPage() {
 
   return (
     <Layout>
-      <Header title="إدارة المهام" subtitle="إنشاء وتتبع المهام والأعمال" />
-      
       <div className="space-y-6 mt-6">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

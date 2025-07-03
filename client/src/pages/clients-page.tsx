@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
+import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit, Trash2, Phone, Mail, MapPin } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Phone, Mail, MapPin, FileText, Download, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -23,10 +23,17 @@ export default function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const { toast } = useToast();
 
   const { data: clients, isLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
+  });
+
+  const { data: clientDocuments, isLoading: documentsLoading } = useQuery<any[]>({
+    queryKey: ["/api/clients", selectedClient?.id, "documents"],
+    enabled: !!selectedClient && documentsOpen,
   });
 
   const form = useForm<InsertClient>({
@@ -122,8 +129,6 @@ export default function ClientsPage() {
 
   return (
     <Layout>
-      <Header title="إدارة العملاء" subtitle="إدارة معلومات العملاء وبياناتهم" />
-      
       <div className="space-y-6 mt-6">
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">
@@ -315,6 +320,17 @@ export default function ClientsPage() {
                             <Button 
                               variant="ghost" 
                               size="sm"
+                              onClick={() => {
+                                setSelectedClient(client);
+                                setDocumentsOpen(true);
+                              }}
+                              title="عرض المستندات"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
                               onClick={() => handleEdit(client)}
                             >
                               <Edit className="w-4 h-4" />
@@ -338,6 +354,71 @@ export default function ClientsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Documents Modal */}
+      <Dialog open={documentsOpen} onOpenChange={setDocumentsOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              مستندات العميل: {selectedClient?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {documentsLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : clientDocuments && clientDocuments.length > 0 ? (
+            <div className="space-y-4">
+              <div className="grid gap-4">
+                {clientDocuments.map((doc: any) => (
+                  <Card key={doc.id} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-5 h-5 text-blue-500" />
+                          <h3 className="font-semibold text-lg">{doc.title}</h3>
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p><strong>القضية:</strong> {doc.caseTitle}</p>
+                          <p><strong>الوصف:</strong> {doc.description || "لا يوجد وصف"}</p>
+                          <p><strong>نوع الملف:</strong> {doc.fileType || "غير محدد"}</p>
+                          <p><strong>حجم الملف:</strong> {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(1)} KB` : "غير محدد"}</p>
+                          <p><strong>تاريخ الرفع:</strong> {formatDualDate(doc.uploadedAt)}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/api/documents/${doc.id}/download`, '_blank')}
+                        >
+                          <Download className="w-4 h-4 ml-1" />
+                          تحميل
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/api/documents/${doc.id}/view`, '_blank')}
+                        >
+                          <Eye className="w-4 h-4 ml-1" />
+                          عرض
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p>لا توجد مستندات لهذا العميل</p>
+              <p className="text-sm">المستندات ستظهر هنا عندما يتم رفعها للقضايا المرتبطة بهذا العميل</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

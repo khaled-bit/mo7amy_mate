@@ -1,24 +1,23 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
+import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Download, Trash2, FileText, Upload, File } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FileText, Upload, Download, Trash2, Search } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { type Document, type Case } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
+import { type Document, type Case } from "@shared/schema";
 
 const uploadSchema = z.object({
   caseId: z.number().min(1, "يجب اختيار القضية"),
@@ -30,76 +29,91 @@ const uploadSchema = z.object({
 type UploadFormData = z.infer<typeof uploadSchema>;
 
 export default function DocumentsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const { toast } = useToast();
-
-  const { data: documents, isLoading } = useQuery<Document[]>({
-    queryKey: ["/api/documents"],
-  });
-
-  const { data: cases } = useQuery<Case[]>({
-    queryKey: ["/api/cases"],
-  });
 
   const form = useForm<UploadFormData>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
-      caseId: 0,
+      caseId: undefined,
       title: "",
       description: "",
+      file: undefined,
     },
   });
 
+  // Fetch documents
+  const { data: documents = [], isLoading } = useQuery<Document[]>({
+    queryKey: ["/api/documents"],
+    enabled: !!user,
+  });
+
+  // Fetch cases for dropdown
+  const { data: cases = [] } = useQuery<Case[]>({
+    queryKey: ["/api/cases"],
+    enabled: !!user,
+  });
+
+  // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        body: data,
-        credentials: "include",
-      });
-      
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error);
+    mutationFn: async (data: UploadFormData) => {
+      const formData = new FormData();
+      formData.append("caseId", data.caseId?.toString() || "");
+      formData.append("title", data.title);
+      formData.append("description", data.description || "");
+      if (data.file && data.file[0]) {
+        formData.append("file", data.file[0]);
       }
-      
-      return res.json();
+
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في رفع المستند");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      toast({ title: "تم رفع المستند بنجاح" });
       setOpen(false);
       form.reset();
-      toast({ title: "تم رفع المستند بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في رفع المستند", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في رفع المستند", description: error.message, variant: "destructive" });
     },
   });
 
+  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/documents/${id}`);
+      const response = await fetch(`/api/documents/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في حذف المستند");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       toast({ title: "تم حذف المستند بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في حذف المستند", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في حذف المستند", description: error.message, variant: "destructive" });
     },
   });
 
   const onSubmit = (data: UploadFormData) => {
-    const formData = new FormData();
-    formData.append("caseId", data.caseId.toString());
-    formData.append("title", data.title);
-    if (data.description) {
-      formData.append("description", data.description);
-    }
-    formData.append("file", data.file[0]);
-    
-    uploadMutation.mutate(formData);
+    uploadMutation.mutate(data);
   };
 
   const handleDelete = (id: number) => {
@@ -108,36 +122,35 @@ export default function DocumentsPage() {
     }
   };
 
-  const filteredDocuments = documents?.filter(doc =>
-    doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    doc.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
-
   const getCaseTitle = (caseId: number) => {
-    return cases?.find(c => c.id === caseId)?.title || "غير محدد";
+    const caseItem = cases.find(c => c.id === caseId);
+    return caseItem?.title || "غير محدد";
   };
 
   const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return "-";
-    const sizes = ['بايت', 'كيلوبايت', 'ميجابايت', 'جيجابايت'];
+    if (!bytes) return "غير محدد";
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   const getFileIcon = (fileType: string | null) => {
-    if (!fileType) return <File className="w-4 h-4" />;
+    if (!fileType) return <FileText className="w-4 h-4" />;
     
     if (fileType.includes('pdf')) return <FileText className="w-4 h-4 text-red-600" />;
-    if (fileType.includes('word') || fileType.includes('document')) return <FileText className="w-4 h-4 text-blue-600" />;
-    if (fileType.includes('image')) return <File className="w-4 h-4 text-green-600" />;
-    
-    return <File className="w-4 h-4" />;
+    if (fileType.includes('doc')) return <FileText className="w-4 h-4 text-blue-600" />;
+    if (fileType.includes('image')) return <FileText className="w-4 h-4 text-green-600" />;
+    return <FileText className="w-4 h-4 text-gray-600" />;
   };
+
+  // Filter documents based on search term
+  const filteredDocuments = documents.filter(doc =>
+    doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getCaseTitle(doc.caseId).toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Layout>
-      <Header title="إدارة المستندات" subtitle="رفع وإدارة مستندات القضايا" />
-      
       <div className="space-y-6 mt-6">
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">

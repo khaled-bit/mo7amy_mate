@@ -1,7 +1,7 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
+import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -146,8 +146,6 @@ export default function SessionsPage() {
 
   return (
     <Layout>
-      <Header title="إدارة الجلسات" subtitle="جدولة ومتابعة الجلسات القانونية" />
-      
       <div className="space-y-6 mt-6">
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">

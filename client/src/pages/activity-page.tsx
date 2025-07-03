@@ -1,5 +1,4 @@
 import Layout from "@/components/layout";
-import Header from "@/components/header";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,8 +109,6 @@ export default function ActivityPage() {
 
   return (
     <Layout>
-      <Header title="سجل الأنشطة" subtitle="تتبع جميع العمليات والأنشطة في النظام" />
-      
       <div className="space-y-6 mt-6">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
