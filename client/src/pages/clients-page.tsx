@@ -8,16 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
 import { Plus, Search, Edit, Trash2, Phone, Mail, MapPin, FileText, Download, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { insertClientSchema, type Client, type InsertClient } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
+import { Link, useLocation } from "wouter";
 
 export default function ClientsPage() {
   const [open, setOpen] = useState(false);
@@ -25,7 +27,12 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deletionConstraints, setDeletionConstraints] = useState<any>(null);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
 
   const { data: clients, isLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -43,11 +50,6 @@ export default function ClientsPage() {
     staleTime: 0, // Always fetch fresh data
     gcTime: 0, // Don't cache
   });
-
-  // Debug: Log the documents data
-  console.log('🔍 Frontend - Selected client:', selectedClient);
-  console.log('📄 Frontend - Client documents:', clientDocuments);
-  console.log('📄 Frontend - Documents loading:', documentsLoading);
 
   const form = useForm<InsertClient>({
     resolver: zodResolver(insertClientSchema),
@@ -96,14 +98,26 @@ export default function ClientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/clients/${id}`);
+      const response = await fetch(`/api/clients/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في حذف العميل");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
       toast({ title: "تم حذف العميل بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في حذف العميل", variant: "destructive" });
+    onError: (error: any) => {
+      toast({ 
+        title: "خطأ في حذف العميل", 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
   });
 
@@ -128,10 +142,44 @@ export default function ClientsPage() {
     setOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا العميل؟")) {
-      deleteMutation.mutate(id);
+  const handleDelete = async (client: Client) => {
+    try {
+      // Check deletion constraints first
+      const response = await fetch(`/api/clients/${client.id}/deletion-constraints`);
+      const constraints = await response.json();
+      
+      if (!constraints.canDelete) {
+        toast({ 
+          title: "لا يمكن حذف العميل", 
+          description: constraints.message,
+          variant: "destructive" 
+        });
+        return;
+      }
+      
+      setClientToDelete(client);
+      setDeletionConstraints(constraints);
+      setDeleteModalOpen(true);
+    } catch (error) {
+      toast({ 
+        title: "خطأ في فحص قيود الحذف", 
+        variant: "destructive" 
+      });
     }
+  };
+
+  const confirmDelete = () => {
+    if (clientToDelete) {
+      deleteMutation.mutate(clientToDelete.id);
+      setDeleteModalOpen(false);
+      setClientToDelete(null);
+      setDeletionConstraints(null);
+    }
+  };
+
+  const handleViewDocuments = (client: Client) => {
+    setSelectedClient(client);
+    setDocumentsOpen(true);
   };
 
   const filteredClients = clients?.filter(client =>
@@ -139,6 +187,72 @@ export default function ClientsPage() {
     client.phone?.includes(searchTerm) ||
     client.email?.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
+
+  // Define columns for DataTable
+  const columns: DataTableColumn<Client>[] = [
+    {
+      key: "name",
+      label: "اسم العميل",
+      sortable: true,
+      render: (row) => <span className="font-medium">{row.name}</span>,
+    },
+    {
+      key: "phone",
+      label: "رقم الهاتف",
+      sortable: true,
+      render: (row) => row.phone || "-",
+    },
+    {
+      key: "email",
+      label: "البريد الإلكتروني",
+      sortable: true,
+      render: (row) => row.email || "-",
+    },
+    {
+      key: "nationalId",
+      label: "الرقم القومي",
+      sortable: true,
+      render: (row) => row.nationalId || "-",
+    },
+    {
+      key: "createdAt",
+      label: "تاريخ الإنشاء",
+      sortable: true,
+      align: "center",
+      render: (row) => row.createdAt ? formatDualDate(row.createdAt.toString()) : "-",
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleViewDocuments(row)}
+          >
+            <FileText className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
@@ -162,7 +276,7 @@ export default function ClientsPage() {
                 إضافة عميل جديد
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>
                   {editingClient ? "تعديل العميل" : "إضافة عميل جديد"}
@@ -175,66 +289,73 @@ export default function ClientsPage() {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>الاسم الكامل</FormLabel>
+                        <FormLabel>اسم العميل</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>البريد الإلكتروني</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="nationalId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>رقم الهوية</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>العنوان</FormLabel>
-                        <FormControl>
-                          <Textarea {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>رقم الهاتف</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>البريد الإلكتروني</FormLabel>
+                          <FormControl>
+                            <Input type="email" {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="nationalId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الرقم القومي</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>العنوان</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <FormField
                     control={form.control}
                     name="notes"
@@ -242,12 +363,13 @@ export default function ClientsPage() {
                       <FormItem>
                         <FormLabel>ملاحظات</FormLabel>
                         <FormControl>
-                          <Textarea {...field} />
+                          <Textarea {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
                   <div className="flex gap-2">
                     <Button 
                       type="submit" 
@@ -282,156 +404,92 @@ export default function ClientsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>الاسم</TableHead>
-                    <TableHead>الهاتف</TableHead>
-                    <TableHead>البريد الإلكتروني</TableHead>
-                    <TableHead>رقم الهوية</TableHead>
-                    <TableHead>تاريخ الإضافة</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredClients.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        لا توجد عملاء
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredClients.map((client) => (
-                      <TableRow key={client.id}>
-                        <TableCell className="font-medium">{client.name}</TableCell>
-                        <TableCell>
-                          {client.phone ? (
-                            <div className="flex items-center gap-2">
-                              <Phone className="w-4 h-4 text-muted-foreground" />
-                              {client.phone}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {client.email ? (
-                            <div className="flex items-center gap-2">
-                              <Mail className="w-4 h-4 text-muted-foreground" />
-                              {client.email}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{client.nationalId || "-"}</TableCell>
-                        <TableCell>
-                          {client.createdAt ? formatDualDate(client.createdAt) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => {
-                                setSelectedClient(client);
-                                setDocumentsOpen(true);
-                              }}
-                              title="عرض المستندات"
-                            >
-                              <FileText className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleEdit(client)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleDelete(client.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredClients}
+                initialSort={{ key: "name", direction: "asc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Documents Modal */}
-      <Dialog open={documentsOpen} onOpenChange={setDocumentsOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              مستندات العميل: {selectedClient?.name}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {documentsLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : clientDocuments && clientDocuments.length > 0 ? (
-            <div className="space-y-4">
-              <div className="grid gap-4">
-                {clientDocuments.map((doc: any) => (
-                  <Card key={doc.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-5 h-5 text-blue-500" />
-                          <h3 className="font-semibold text-lg">{doc.title}</h3>
-                        </div>
-                        <div className="text-sm text-muted-foreground space-y-1">
-                          <p><strong>القضية:</strong> {doc.caseTitle}</p>
-                          <p><strong>الوصف:</strong> {doc.description || "لا يوجد وصف"}</p>
-                          <p><strong>نوع الملف:</strong> {doc.fileType || "غير محدد"}</p>
-                          <p><strong>حجم الملف:</strong> {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(1)} KB` : "غير محدد"}</p>
-                          <p><strong>تاريخ الرفع:</strong> {formatDualDate(doc.uploadedAt)}</p>
-                        </div>
+        {/* Documents Modal */}
+        <Dialog open={documentsOpen} onOpenChange={setDocumentsOpen}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>
+                مستندات العميل: {selectedClient?.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="max-h-96 overflow-y-auto">
+              {documentsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : clientDocuments && clientDocuments.length > 0 ? (
+                <div className="space-y-4">
+                  {clientDocuments.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <h4 className="font-medium">{doc.title}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          القضية: {doc.caseTitle || "غير محدد"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {doc.description || "لا يوجد وصف"}
+                        </p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(`/api/documents/${doc.id}/download`, '_blank')}
-                        >
-                          <Download className="w-4 h-4 ml-1" />
-                          تحميل
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
                           onClick={() => window.open(`/api/documents/${doc.id}/view`, '_blank')}
                         >
-                          <Eye className="w-4 h-4 ml-1" />
                           عرض
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => window.open(`/api/documents/${doc.id}/download`, '_blank')}
+                        >
+                          تحميل
                         </Button>
                       </div>
                     </div>
-                  </Card>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>لا توجد مستندات لهذا العميل</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>لا توجد مستندات لهذا العميل</p>
-              <p className="text-sm">المستندات ستظهر هنا عندما يتم رفعها للقضايا المرتبطة بهذا العميل</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteModalOpen}
+          onOpenChange={setDeleteModalOpen}
+          onConfirm={confirmDelete}
+          title="حذف العميل"
+          description={
+            deletionConstraints ? 
+            `هل أنت متأكد من حذف هذا العميل؟ سيتم حذف:
+            ${deletionConstraints.relatedCases > 0 ? `\n• ${deletionConstraints.relatedCases} قضية` : ''}
+            ${deletionConstraints.relatedSessions > 0 ? `\n• ${deletionConstraints.relatedSessions} جلسة` : ''}
+            ${deletionConstraints.relatedDocuments > 0 ? `\n• ${deletionConstraints.relatedDocuments} مستند` : ''}
+            ${deletionConstraints.relatedInvoices > 0 ? `\n• ${deletionConstraints.relatedInvoices} فاتورة` : ''}
+            ${deletionConstraints.relatedTasks > 0 ? `\n• ${deletionConstraints.relatedTasks} مهمة` : ''}
+            \n\nلا يمكن التراجع عن هذا الإجراء.` :
+            "هل أنت متأكد من حذف هذا العميل؟ لا يمكن التراجع عن هذا الإجراء."
+          }
+          itemName={clientToDelete?.name}
+          isLoading={deleteMutation.isPending}
+        />
+      </div>
     </Layout>
   );
 }

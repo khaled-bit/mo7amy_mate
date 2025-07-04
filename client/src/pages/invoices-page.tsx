@@ -1,34 +1,39 @@
 import Layout from "@/components/layout";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Edit, Receipt, DollarSign, Calendar, CheckCircle, Clock } from "lucide-react";
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
+import { Plus, Search, Edit, Trash2, DollarSign } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { insertInvoiceSchema, type Invoice, type InsertInvoice, type Case } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
+import { type Invoice, type InsertInvoice, insertInvoiceSchema } from "@shared/schema";
 
 export default function InvoicesPage() {
   const [open, setOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [confirmPaidOpen, setConfirmPaidOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: invoices, isLoading } = useQuery<Invoice[]>({
     queryKey: ["/api/invoices"],
   });
 
-  const { data: cases } = useQuery<Case[]>({
+  const { data: cases } = useQuery<any[]>({
     queryKey: ["/api/cases"],
   });
 
@@ -38,92 +43,115 @@ export default function InvoicesPage() {
       caseId: undefined,
       amount: "",
       description: "",
-      paid: false,
       dueDate: "",
-      paidDate: "",
+      paid: false,
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertInvoice) => {
-      const res = await apiRequest("POST", "/api/invoices", data);
-      return res.json();
+      const response = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في إنشاء الفاتورة");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      toast({ title: "تم إنشاء الفاتورة بنجاح" });
       setOpen(false);
-      form.reset({
-        caseId: undefined,
-        amount: "",
-        description: "",
-        paid: false,
-        dueDate: "",
-        paidDate: "",
-      });
-      toast({ title: "تم إضافة الفاتورة بنجاح" });
+      form.reset();
     },
-    onError: () => {
-      toast({ title: "خطأ في إضافة الفاتورة", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في إنشاء الفاتورة", description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertInvoice> }) => {
-      const res = await apiRequest("PUT", `/api/invoices/${id}`, data);
-      return res.json();
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في تحديث الفاتورة");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      setOpen(false);
-      setEditingInvoice(null);
-      form.reset({
-        caseId: undefined,
-        amount: "",
-        description: "",
-        paid: false,
-        dueDate: "",
-        paidDate: "",
-      });
       toast({ title: "تم تحديث الفاتورة بنجاح" });
+      setOpen(false);
+      form.reset();
+      setEditingInvoice(null);
     },
-    onError: () => {
-      toast({ title: "خطأ في تحديث الفاتورة", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في تحديث الفاتورة", description: error.message, variant: "destructive" });
     },
   });
 
-  const markPaidMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("PUT", `/api/invoices/${id}`, {
-        paid: true,
-        paidDate: new Date().toISOString().split('T')[0]
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: "DELETE",
       });
-      return res.json();
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في حذف الفاتورة");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      toast({ title: "تم تحديث حالة الدفع" });
+      toast({ title: "تم حذف الفاتورة بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في تحديث الفاتورة", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في حذف الفاتورة", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const markAsPaidMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paid: true }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في تحديث حالة الفاتورة");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      toast({ title: "تم تحديث حالة الفاتورة بنجاح" });
+      setConfirmPaidOpen(false);
+      setSelectedInvoice(null);
+    },
+    onError: (error) => {
+      toast({ title: "خطأ في تحديث حالة الفاتورة", description: error.message, variant: "destructive" });
     },
   });
 
   const onSubmit = (data: InsertInvoice) => {
-    // Transform the data to ensure proper types
-    const transformedData = {
-      ...data,
-      amount: data.amount ? data.amount.toString() : "0",
-      caseId: data.caseId || undefined,
-      dueDate: data.dueDate || undefined,
-      paidDate: data.paidDate || undefined
-    };
-    
-    console.log('📝 Submitting invoice data:', transformedData);
-    
     if (editingInvoice) {
-      updateMutation.mutate({ id: editingInvoice.id, data: transformedData });
+      updateMutation.mutate({ id: editingInvoice.id, data });
     } else {
-      createMutation.mutate(transformedData);
+      createMutation.mutate(data);
     }
   };
 
@@ -131,90 +159,158 @@ export default function InvoicesPage() {
     setEditingInvoice(invoice);
     form.reset({
       caseId: invoice.caseId || undefined,
-      amount: invoice.amount,
+      amount: invoice.amount.toString(),
       description: invoice.description || "",
-      paid: invoice.paid,
-      dueDate: invoice.dueDate || "",
-      paidDate: invoice.paidDate || "",
+      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : "",
+      paid: invoice.paid || false,
     });
     setOpen(true);
   };
 
-  const [markPaidDialog, setMarkPaidDialog] = useState<{ open: boolean; invoiceId: number | null }>({
-    open: false,
-    invoiceId: null
-  });
-
-  const handleMarkPaid = (id: number) => {
-    setMarkPaidDialog({ open: true, invoiceId: id });
+  const handleDelete = (invoice: Invoice) => {
+    setInvoiceToDelete(invoice);
+    setDeleteModalOpen(true);
   };
 
-  const confirmMarkPaid = () => {
-    if (markPaidDialog.invoiceId !== null) {
-      markPaidMutation.mutate(markPaidDialog.invoiceId);
-      setMarkPaidDialog({ open: false, invoiceId: null });
+  const confirmDelete = () => {
+    if (invoiceToDelete) {
+      deleteMutation.mutate(invoiceToDelete.id);
+      setDeleteModalOpen(false);
+      setInvoiceToDelete(null);
+    }
+  };
+
+  const handleMarkAsPaid = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setConfirmPaidOpen(true);
+  };
+
+  const confirmMarkAsPaid = () => {
+    if (selectedInvoice) {
+      markAsPaidMutation.mutate(selectedInvoice.id);
     }
   };
 
   const filteredInvoices = invoices?.filter(invoice =>
-    invoice.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    invoice.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    invoice.amount.toString().includes(searchTerm) ||
+    invoice.id.toString().includes(searchTerm)
   ) || [];
 
-  const getCaseTitle = (caseId: number) => {
-    if (caseId === 0) return "غير مرتبطة بقضية";
-    return cases?.find(c => c.id === caseId)?.title || "غير محدد";
+  const getCaseTitle = (caseId: number | null) => {
+    if (!caseId) return "غير محدد";
+    const caseItem = cases?.find(c => c.id === caseId);
+    return caseItem?.title || "غير محدد";
   };
 
-  const totalPending = filteredInvoices
-    .filter(inv => !inv.paid)
-    .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+  const getStatusBadge = (paid: boolean | null) => {
+    if (paid) {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          مدفوع
+        </span>
+      );
+    } else {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          في الانتظار
+        </span>
+      );
+    }
+  };
 
-  const totalPaid = filteredInvoices
-    .filter(inv => inv.paid)
-    .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+  // Define columns for DataTable
+  const columns: DataTableColumn<Invoice>[] = [
+    {
+      key: "id",
+      label: "رقم الفاتورة",
+      sortable: true,
+      align: "center",
+      render: (row) => <span className="font-medium">#{row.id}</span>,
+    },
+    {
+      key: "caseId",
+      label: "القضية",
+      sortable: true,
+      render: (row) => getCaseTitle(row.caseId),
+    },
+    {
+      key: "amount",
+      label: "المبلغ",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <DollarSign className="w-4 h-4 text-green-600" />
+          <span className="font-medium">{row.amount} جنيه</span>
+        </div>
+      ),
+    },
+    {
+      key: "description",
+      label: "الوصف",
+      sortable: true,
+      render: (row) => row.description || "-",
+    },
+    {
+      key: "dueDate",
+      label: "تاريخ الاستحقاق",
+      sortable: true,
+      align: "center",
+      render: (row) => row.dueDate ? formatDualDate(row.dueDate.toString()) : "-",
+    },
+    {
+      key: "paid",
+      label: "الحالة",
+      sortable: true,
+      align: "center",
+      render: (row) => getStatusBadge(row.paid),
+    },
+    {
+      key: "createdAt",
+      label: "تاريخ الإنشاء",
+      sortable: true,
+      align: "center",
+      render: (row) => row.createdAt ? formatDualDate(row.createdAt.toString()) : "-",
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+          {!row.paid && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleMarkAsPaid(row)}
+            >
+              تم الدفع
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
       <div className="space-y-6 mt-6">
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">إجمالي الفواتير</p>
-                  <p className="text-2xl font-bold">{filteredInvoices.length}</p>
-                </div>
-                <Receipt className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المبالغ المعلقة</p>
-                  <p className="text-2xl font-bold text-red-600">{totalPending.toLocaleString()} جنيه</p>
-                </div>
-                <Clock className="w-8 h-8 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المبالغ المدفوعة</p>
-                  <p className="text-2xl font-bold text-green-600">{totalPaid.toLocaleString()} جنيه</p>
-                </div>
-                <CheckCircle className="w-8 h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">
           <div className="relative w-64">
@@ -229,22 +325,12 @@ export default function InvoicesPage() {
           
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => { 
-                setEditingInvoice(null); 
-                form.reset({
-                  caseId: undefined,
-                  amount: "",
-                  description: "",
-                  paid: false,
-                  dueDate: "",
-                  paidDate: "",
-                }); 
-              }}>
+              <Button onClick={() => { setEditingInvoice(null); form.reset(); }}>
                 <Plus className="w-4 h-4 ml-2" />
                 إضافة فاتورة جديدة
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>
                   {editingInvoice ? "تعديل الفاتورة" : "إضافة فاتورة جديدة"}
@@ -258,14 +344,14 @@ export default function InvoicesPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>القضية</FormLabel>
-                        <Select onValueChange={(value) => field.onChange(value === "no-case" ? undefined : parseInt(value))} value={field.value?.toString() || "no-case"}>
+                        <Select onValueChange={(value) => field.onChange(value === "none" ? undefined : parseInt(value))} value={field.value?.toString() || "none"}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="اختر القضية" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="no-case">غير مرتبطة بقضية</SelectItem>
+                            <SelectItem value="none">غير محدد</SelectItem>
                             {cases?.map((caseItem) => (
                               <SelectItem key={caseItem.id} value={caseItem.id.toString()}>
                                 {caseItem.title}
@@ -277,20 +363,35 @@ export default function InvoicesPage() {
                       </FormItem>
                     )}
                   />
-                  
-                  <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>المبلغ (جنيه)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>المبلغ</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="dueDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>تاريخ الاستحقاق</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} value={field.value || ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}
@@ -299,7 +400,7 @@ export default function InvoicesPage() {
                       <FormItem>
                         <FormLabel>الوصف</FormLabel>
                         <FormControl>
-                          <Textarea {...field} value={field.value || ""} placeholder="وصف الخدمة أو الأتعاب..." />
+                          <Textarea {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -308,13 +409,21 @@ export default function InvoicesPage() {
 
                   <FormField
                     control={form.control}
-                    name="dueDate"
+                    name="paid"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>تاريخ الاستحقاق</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} value={field.value || ""} />
-                        </FormControl>
+                        <FormLabel>الحالة</FormLabel>
+                        <Select onValueChange={(value) => field.onChange(value === "true")} value={field.value?.toString() || "false"}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="اختر الحالة" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="false">في الانتظار</SelectItem>
+                            <SelectItem value="true">مدفوع</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -354,111 +463,55 @@ export default function InvoicesPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>رقم الفاتورة</TableHead>
-                    <TableHead>القضية</TableHead>
-                    <TableHead>المبلغ</TableHead>
-                    <TableHead>الوصف</TableHead>
-                    <TableHead>تاريخ الاستحقاق</TableHead>
-                    <TableHead>حالة الدفع</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInvoices.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        <Receipt className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>لا توجد فواتير</p>
-                        <p className="text-sm">ابدأ بإضافة فاتورة جديدة</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredInvoices.map((invoice) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell className="font-medium">#{invoice.id}</TableCell>
-                        <TableCell>{getCaseTitle(invoice.caseId || 0)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="w-4 h-4 text-muted-foreground" />
-                            {parseFloat(invoice.amount).toLocaleString()} جنيه
-                          </div>
-                        </TableCell>
-                        <TableCell>{invoice.description || "-"}</TableCell>
-                        <TableCell>
-                          {invoice.dueDate ? (
-                            formatDualDate(invoice.dueDate)
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={invoice.paid ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                            {invoice.paid ? "مدفوعة" : "معلقة"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleEdit(invoice)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            {!invoice.paid && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleMarkPaid(invoice.id)}
-                                className="text-green-600 hover:text-green-700"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredInvoices}
+                initialSort={{ key: "id", direction: "desc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Mark as Paid Confirmation Dialog */}
-      <Dialog open={markPaidDialog.open} onOpenChange={(open) => setMarkPaidDialog({ open, invoiceId: null })}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>تأكيد الدفع</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-muted-foreground">
-              هل تريد وضع علامة على هذه الفاتورة كمدفوعة؟
-            </p>
-            <div className="flex gap-2">
-              <Button 
-                onClick={confirmMarkPaid}
-                disabled={markPaidMutation.isPending}
-                className="flex-1"
-              >
-                {markPaidMutation.isPending ? "جاري التحديث..." : "تأكيد"}
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setMarkPaidDialog({ open: false, invoiceId: null })}
-                className="flex-1"
-              >
-                إلغاء
-              </Button>
+        {/* Confirm Paid Modal */}
+        <Dialog open={confirmPaidOpen} onOpenChange={setConfirmPaidOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>تأكيد الدفع</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p>هل أنت متأكد من أن الفاتورة رقم {selectedInvoice?.id} قد تم دفعها؟</p>
+              <div className="flex gap-2">
+                <Button
+                  onClick={confirmMarkAsPaid}
+                  disabled={markAsPaidMutation.isPending}
+                  className="flex-1"
+                >
+                  {markAsPaidMutation.isPending ? "جاري التحديث..." : "تأكيد"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmPaidOpen(false)}
+                  className="flex-1"
+                >
+                  إلغاء
+                </Button>
+              </div>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteModalOpen}
+          onOpenChange={setDeleteModalOpen}
+          onConfirm={confirmDelete}
+          title="حذف الفاتورة"
+          description="هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء."
+          itemName={`الفاتورة رقم ${invoiceToDelete?.id}`}
+          isLoading={deleteMutation.isPending}
+        />
+      </div>
     </Layout>
   );
 }

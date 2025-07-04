@@ -1,280 +1,145 @@
 import Layout from "@/components/layout";
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Search, History, User as UserIcon, FileText, Users, Briefcase, Calendar, Receipt, CheckSquare } from "lucide-react";
-import { type ActivityLog, type User } from "@shared/schema";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { Search, Clock, User, Activity } from "lucide-react";
 import { formatDualDate } from "@/lib/utils";
-
-const actionIcons = {
-  login: UserIcon,
-  logout: UserIcon,
-  register: UserIcon,
-  create_client: Users,
-  update_client: Users,
-  delete_client: Users,
-  create_case: Briefcase,
-  update_case: Briefcase,
-  create_session: Calendar,
-  upload_document: FileText,
-  create_invoice: Receipt,
-  create_task: CheckSquare,
-  create_user: UserIcon,
-};
-
-const actionColors = {
-  login: "bg-green-100 text-green-800",
-  logout: "bg-gray-100 text-gray-800",
-  register: "bg-blue-100 text-blue-800",
-  create_client: "bg-purple-100 text-purple-800",
-  update_client: "bg-purple-100 text-purple-800",
-  delete_client: "bg-red-100 text-red-800",
-  create_case: "bg-blue-100 text-blue-800",
-  update_case: "bg-blue-100 text-blue-800",
-  create_session: "bg-yellow-100 text-yellow-800",
-  upload_document: "bg-indigo-100 text-indigo-800",
-  create_invoice: "bg-green-100 text-green-800",
-  create_task: "bg-orange-100 text-orange-800",
-  create_user: "bg-red-100 text-red-800",
-};
+import { type ActivityLog as ActivityType } from "@shared/schema";
 
 export default function ActivityPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedAction, setSelectedAction] = useState("all");
-  const [limit, setLimit] = useState("50");
 
-  const { data: activities, isLoading } = useQuery<ActivityLog[]>({
-    queryKey: ["/api/activity", { limit: parseInt(limit) }],
-    queryFn: async () => {
-      const res = await fetch(`/api/activity?limit=${limit}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch activities");
-      return res.json();
-    },
+  const { data: activities, isLoading } = useQuery<ActivityType[]>({
+    queryKey: ["/api/activity"],
   });
 
-  const { data: users } = useQuery<User[]>({
+  // Fetch all users for mapping userId to name
+  const { data: users } = useQuery<any[]>({
     queryKey: ["/api/users"],
-    queryFn: async () => {
-      const res = await fetch("/api/users", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch users");
-      return res.json();
-    },
+    // Only fetch if admin (API requires admin), fallback to empty array if not allowed
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Create a mapping of user IDs to names
-  const userMap = users?.reduce((acc, user) => {
-    acc[user.id] = user.name;
-    return acc;
-  }, {} as Record<number, string>) || {};
-
-  const filteredActivities = activities?.filter(activity => {
-    const matchesSearch = activity.details?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         activity.action.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesAction = selectedAction === "all" || activity.action === selectedAction;
-    return matchesSearch && matchesAction;
-  }) || [];
-
-  const getActionIcon = (action: string) => {
-    const Icon = actionIcons[action as keyof typeof actionIcons] || History;
-    return Icon;
+  // Helper to get user name by id
+  const getUserName = (userId: number | null | undefined) => {
+    if (!userId || !users) return "غير محدد";
+    const user = users.find((u: any) => u.id === userId);
+    return user ? user.name : "غير محدد";
   };
 
-  const getActionColor = (action: string) => {
-    return actionColors[action as keyof typeof actionColors] || "bg-gray-100 text-gray-800";
+  const filteredActivities = activities?.filter(activity =>
+    activity.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    activity.details?.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
+
+  const getActionLabel = (action: string) => {
+    const actionMap: Record<string, { label: string; className: string }> = {
+      create_case: { label: "إنشاء قضية", className: "bg-green-100 text-green-800" },
+      update_case: { label: "تحديث قضية", className: "bg-blue-100 text-blue-800" },
+      delete_case: { label: "حذف قضية", className: "bg-red-100 text-red-800" },
+      create_client: { label: "إنشاء عميل", className: "bg-green-100 text-green-800" },
+      update_client: { label: "تحديث عميل", className: "bg-blue-100 text-blue-800" },
+      delete_client: { label: "حذف عميل", className: "bg-red-100 text-red-800" },
+      create_invoice: { label: "إنشاء فاتورة", className: "bg-green-100 text-green-800" },
+      update_invoice: { label: "تحديث فاتورة", className: "bg-blue-100 text-blue-800" },
+      delete_invoice: { label: "حذف فاتورة", className: "bg-red-100 text-red-800" },
+      create_session: { label: "إنشاء جلسة", className: "bg-green-100 text-green-800" },
+      update_session: { label: "تحديث جلسة", className: "bg-blue-100 text-blue-800" },
+      delete_session: { label: "حذف جلسة", className: "bg-red-100 text-red-800" },
+      create_task: { label: "إنشاء مهمة", className: "bg-green-100 text-green-800" },
+      update_task: { label: "تحديث مهمة", className: "bg-blue-100 text-blue-800" },
+      delete_task: { label: "حذف مهمة", className: "bg-red-100 text-red-800" },
+      create_document: { label: "رفع مستند", className: "bg-green-100 text-green-800" },
+      update_document: { label: "تحديث مستند", className: "bg-blue-100 text-blue-800" },
+      delete_document: { label: "حذف مستند", className: "bg-red-100 text-red-800" },
+      login: { label: "تسجيل دخول", className: "bg-purple-100 text-purple-800" },
+      logout: { label: "تسجيل خروج", className: "bg-gray-100 text-gray-800" },
+    };
+    
+    const config = actionMap[action] || { label: action, className: "bg-gray-100 text-gray-800" };
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.className}`}>
+        {config.label}
+      </span>
+    );
   };
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return "الآن";
-    if (diffInMinutes < 60) return `منذ ${diffInMinutes} دقيقة`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `منذ ${diffInHours} ساعة`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `منذ ${diffInDays} يوم`;
-    
-    return formatDualDate(dateString);
-  };
-
-  const activityStats = {
-    total: filteredActivities.length,
-    today: filteredActivities.filter(a => {
-      const activityDate = new Date(a.createdAt!).toDateString();
-      const today = new Date().toDateString();
-      return activityDate === today;
-    }).length,
-    thisWeek: filteredActivities.filter(a => {
-      const activityDate = new Date(a.createdAt!);
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      return activityDate >= oneWeekAgo;
-    }).length,
-  };
-
-  const uniqueActions = Array.from(new Set(activities?.map(a => a.action) || []));
+  // Define columns for DataTable
+  const columns: DataTableColumn<ActivityType>[] = [
+    {
+      key: "action",
+      label: "الإجراء",
+      sortable: true,
+      align: "center",
+      render: (row) => getActionLabel(row.action),
+    },
+    {
+      key: "userId",
+      label: "المستخدم",
+      sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-blue-600" />
+          <span>{getUserName(row.userId)}</span>
+        </div>
+      ),
+    },
+    {
+      key: "details",
+      label: "التفاصيل",
+      sortable: true,
+      render: (row) => row.details || "-",
+    },
+    {
+      key: "createdAt",
+      label: "التاريخ والوقت",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <Clock className="w-4 h-4 text-green-600" />
+          <span>{row.createdAt ? formatDualDate(row.createdAt.toString()) : "-"}</span>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
       <div className="space-y-6 mt-6">
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">إجمالي الأنشطة</p>
-                  <p className="text-2xl font-bold">{activityStats.total}</p>
-                </div>
-                <History className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">أنشطة اليوم</p>
-                  <p className="text-2xl font-bold text-green-600">{activityStats.today}</p>
-                </div>
-                <Calendar className="w-8 h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">هذا الأسبوع</p>
-                  <p className="text-2xl font-bold text-purple-600">{activityStats.thisWeek}</p>
-                </div>
-                <CheckSquare className="w-8 h-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Search */}
+        <div className="flex justify-between items-center gap-4">
+          <div className="relative w-64">
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="البحث في النشاطات..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-10"
+            />
+          </div>
         </div>
 
-        {/* Filters */}
+        {/* Activity Table */}
         <Card>
           <CardHeader>
-            <CardTitle>فلترة الأنشطة</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block">البحث</label>
-                <div className="relative">
-                  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="البحث في الأنشطة..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pr-10"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block">نوع النشاط</label>
-                <Select value={selectedAction} onValueChange={setSelectedAction}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر نوع النشاط" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">جميع الأنشطة</SelectItem>
-                    {uniqueActions.map((action) => (
-                      <SelectItem key={action} value={action}>
-                        {action}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="w-32">
-                <label className="text-sm font-medium mb-2 block">عدد النتائج</label>
-                <Select value={limit} onValueChange={setLimit}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                    <SelectItem value="200">200</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Activity Log */}
-        <Card>
-          <CardHeader>
-            <CardTitle>سجل الأنشطة ({filteredActivities.length})</CardTitle>
+            <CardTitle>سجل النشاطات ({filteredActivities.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
-            ) : filteredActivities.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>لا توجد أنشطة</p>
-                <p className="text-sm">لم يتم تسجيل أي نشاط بعد</p>
-              </div>
             ) : (
-              <div className="space-y-4">
-                {filteredActivities.map((activity) => {
-                  const Icon = getActionIcon(activity.action);
-                  return (
-                    <div key={activity.id} className="flex items-start gap-4 p-4 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors">
-                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-5 h-5 text-gray-600" />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge className={getActionColor(activity.action)}>
-                            {activity.action}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {activity.createdAt ? formatTimeAgo(activity.createdAt.toString()) : ''}
-                          </span>
-                        </div>
-                        
-                        <p className="text-sm font-medium text-gray-900 mb-1">
-                          {activity.details || "نشاط غير محدد"}
-                        </p>
-                        
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <span>المستخدم: {activity.userId ? userMap[activity.userId] || `المستخدم ${activity.userId}` : "النظام"}</span>
-                          <span>النوع: {activity.targetType}</span>
-                          <span>المعرف: #{activity.targetId}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="text-xs text-muted-foreground text-left">
-                        {activity.createdAt ? new Date(activity.createdAt).toLocaleString('ar-SA') : ''}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <DataTable
+                columns={columns}
+                data={filteredActivities}
+                initialSort={{ key: "createdAt", direction: "desc" }}
+                initialPageSize={20}
+              />
             )}
           </CardContent>
         </Card>

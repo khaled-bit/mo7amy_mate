@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertClientSchema, insertCaseSchema, insertSessionSchema, insertInvoiceSchema, insertTaskSchema, insertUserSchema } from "@shared/schema";
+import { insertClientSchema, insertCaseSchema, insertSessionSchema, insertInvoiceSchema, insertTaskSchema, insertUserSchema, insertDocumentSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import { promises as fs } from "fs";
@@ -114,9 +114,30 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/clients/:id/deletion-constraints", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const constraints = await storage.checkClientDeletionConstraints(id);
+      res.json(constraints);
+    } catch (error: any) {
+      console.error("Error checking deletion constraints:", error);
+      res.status(500).json({ 
+        message: "خطأ في فحص قيود الحذف",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
   app.delete("/api/clients/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      
+      // Check if client exists first
+      const client = await storage.getClient(id);
+      if (!client) {
+        return res.status(404).json({ message: "العميل غير موجود" });
+      }
+      
       await storage.deleteClient(id);
       
       await storage.logActivity({
@@ -124,12 +145,36 @@ export function registerRoutes(app: Express): Server {
         action: "delete_client",
         targetType: "client",
         targetId: id,
-        details: "تم حذف عميل",
+        details: `تم حذف العميل: ${client.name}`,
       });
       
       res.sendStatus(204);
-    } catch (error) {
-      res.status(500).json({ message: "خطأ في الحذف" });
+    } catch (error: any) {
+      console.error("Error deleting client:", error);
+      
+      // Provide more specific error messages
+      if (error.message === "العميل غير موجود") {
+        return res.status(404).json({ message: error.message });
+      }
+      
+      // Check for foreign key constraint violations
+      if (error.code === '23503' || error.message.includes('foreign key')) {
+        return res.status(409).json({ 
+          message: "لا يمكن حذف العميل لوجود بيانات مرتبطة به. يرجى حذف جميع القضايا والمستندات المرتبطة أولاً." 
+        });
+      }
+      
+      // Check for other database errors
+      if (error.code === '23505' || error.message.includes('unique constraint')) {
+        return res.status(409).json({ 
+          message: "لا يمكن حذف العميل لوجود قيود في قاعدة البيانات" 
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "خطأ في حذف العميل. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 
@@ -199,6 +244,56 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.delete("/api/cases/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      // Check if case exists first
+      const caseDetails = await storage.getCase(id);
+      if (!caseDetails) {
+        return res.status(404).json({ message: "القضية غير موجودة" });
+      }
+      
+      await storage.deleteCase(id);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "delete_case",
+        targetType: "case",
+        targetId: id,
+        details: `تم حذف القضية: ${caseDetails.title}`,
+      });
+      
+      res.sendStatus(204);
+    } catch (error: any) {
+      console.error("Error deleting case:", error);
+      
+      // Provide more specific error messages
+      if (error.message === "القضية غير موجودة") {
+        return res.status(404).json({ message: error.message });
+      }
+      
+      // Check for foreign key constraint violations
+      if (error.code === '23503' || error.message.includes('foreign key')) {
+        return res.status(409).json({ 
+          message: "لا يمكن حذف القضية لوجود بيانات مرتبطة بها. يرجى حذف جميع الجلسات والمستندات والفواتير والمهام المرتبطة أولاً." 
+        });
+      }
+      
+      // Check for other database errors
+      if (error.code === '23505' || error.message.includes('unique constraint')) {
+        return res.status(409).json({ 
+          message: "لا يمكن حذف القضية لوجود قيود في قاعدة البيانات" 
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "خطأ في حذف القضية. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
   // AI Analysis for Case (admin/lawyer only)
   app.post("/api/cases/:id/ai-analysis", requireAuth, async (req, res) => {
     try {
@@ -224,6 +319,16 @@ export function registerRoutes(app: Express): Server {
 - استند إلى الدساتير المصرية (1971، 2012، 2014، تعديلات 2019) وقوانين العقوبات، الإجراءات الجنائية، القانون المدني، إلخ.
 - أرفق المراجع وروابط النصوص القانونية إن أمكن.
 
+## سيناريوهات الفوز المحتملة:
+- حدد السيناريوهات التي يمكن أن تؤدي إلى فوز المدعي أو المدعى عليه.
+- اذكر الأدلة والوثائق المطلوبة لكل سيناريو.
+- اذكر الاستراتيجيات القانونية المثلى لكل سيناريو.
+
+## سيناريوهات الخسارة المحتملة:
+- حدد السيناريوهات التي يمكن أن تؤدي إلى خسارة المدعي أو المدعى عليه.
+- اذكر نقاط الضعف والثغرات التي قد تؤدي إلى الخسارة.
+- اذكر كيفية تجنب أو تقليل هذه المخاطر.
+
 تفاصيل القضية:
 ${JSON.stringify(caseDetails, null, 2)}
 
@@ -232,8 +337,6 @@ ${JSON.stringify(caseDetails, null, 2)}
 - قانون العقوبات: https://www.refworld.org/
 - القانون المدني: https://www.scribd.com/, https://wipo.int/, https://natlex.ilo.org/
 `;
-
-      console.log('Sending to Claude with model: claude-sonnet-4-20250514');
 
       // Call Claude API using the SDK
       const msg = await anthropic.messages.create({
@@ -245,8 +348,6 @@ ${JSON.stringify(caseDetails, null, 2)}
         ]
       });
 
-      console.log('Claude API response received successfully');
-
       // Extract text content from the response
       const textContent = msg.content.find(block => block.type === 'text');
       if (!textContent || textContent.type !== 'text') {
@@ -255,7 +356,6 @@ ${JSON.stringify(caseDetails, null, 2)}
 
       res.json({ analysis: textContent.text });
     } catch (error) {
-      console.error('AI analysis endpoint error:', error);
       res.status(500).json({ message: "خطأ في التحليل الذكي", error: String(error) });
     }
   });
@@ -304,11 +404,49 @@ ${JSON.stringify(caseDetails, null, 2)}
     }
   });
 
+  app.put("/api/sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sessionData = insertSessionSchema.partial().parse(req.body);
+      const updatedSession = await storage.updateSession(id, sessionData);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "update_session",
+        targetType: "session",
+        targetId: id,
+        details: `تم تحديث الجلسة: ${updatedSession.title}`,
+      });
+      
+      res.json(updatedSession);
+    } catch (error) {
+      res.status(400).json({ message: "خطأ في التحديث" });
+    }
+  });
+
+  app.delete("/api/sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteSession(id);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "delete_session",
+        targetType: "session",
+        targetId: id,
+        details: "تم حذف جلسة",
+      });
+      
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في الحذف" });
+    }
+  });
+
   // Documents routes
   app.get("/api/documents", requireAuth, async (req, res) => {
     try {
       const documents = await storage.getAllDocuments();
-      console.log('All documents:', documents.map(d => ({ id: d.id, title: d.title, caseId: d.caseId })));
       res.json(documents);
     } catch (error) {
       res.status(500).json({ message: "خطأ في استرجاع المستندات" });
@@ -320,28 +458,69 @@ ${JSON.stringify(caseDetails, null, 2)}
       if (!req.file) {
         return res.status(400).json({ message: "لم يتم رفع ملف" });
       }
-      
-      const document = await storage.createDocument({
-        caseId: parseInt(req.body.caseId),
-        title: req.body.title || req.file.originalname,
-        filePath: req.file.path,
+
+      const documentData = insertDocumentSchema.parse({
+        ...req.body,
+        filePath: req.file.filename,
         fileSize: req.file.size,
         fileType: req.file.mimetype,
-        description: req.body.description,
+      });
+
+      const document = await storage.createDocument({
+        ...documentData,
         uploadedBy: req.user!.id
       });
       
       await storage.logActivity({
         userId: req.user!.id,
-        action: "upload_document",
+        action: "create_document",
         targetType: "document",
         targetId: document.id,
-        details: `تم رفع مستند: ${document.title}`,
+        details: `تم رفع مستند جديد: ${document.title}`,
       });
       
       res.status(201).json(document);
     } catch (error) {
-      res.status(500).json({ message: "خطأ في رفع المستند" });
+      res.status(400).json({ message: "بيانات غير صحيحة" });
+    }
+  });
+
+  app.put("/api/documents/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const documentData = insertDocumentSchema.partial().parse(req.body);
+      const updatedDocument = await storage.updateDocument(id, documentData);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "update_document",
+        targetType: "document",
+        targetId: id,
+        details: `تم تحديث المستند: ${updatedDocument.title}`,
+      });
+      
+      res.json(updatedDocument);
+    } catch (error) {
+      res.status(400).json({ message: "خطأ في التحديث" });
+    }
+  });
+
+  app.delete("/api/documents/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteDocument(id);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "delete_document",
+        targetType: "document",
+        targetId: id,
+        details: "تم حذف مستند",
+      });
+      
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في الحذف" });
     }
   });
 
@@ -357,11 +536,7 @@ ${JSON.stringify(caseDetails, null, 2)}
 
   app.post("/api/invoices", requireAuth, async (req, res) => {
     try {
-      console.log('📝 Invoice creation request body:', req.body);
-      
       const invoiceData = insertInvoiceSchema.parse(req.body);
-      console.log('✅ Parsed invoice data:', invoiceData);
-      
       const invoice = await storage.createInvoice({
         ...invoiceData,
         createdBy: req.user!.id
@@ -372,63 +547,58 @@ ${JSON.stringify(caseDetails, null, 2)}
         action: "create_invoice",
         targetType: "invoice",
         targetId: invoice.id,
-        details: `تم إنشاء فاتورة بمبلغ ${invoice.amount} جنيه`,
+        details: `تم إنشاء فاتورة جديدة: ${invoice.amount} جنيه`,
       });
       
       res.status(201).json(invoice);
     } catch (error) {
-      console.error('❌ Invoice creation error:', error);
-      if (error instanceof Error) {
-        res.status(400).json({ 
-          message: "بيانات غير صحيحة", 
-          details: error.message 
-        });
-      } else {
-        res.status(400).json({ message: "بيانات غير صحيحة" });
-      }
+      res.status(400).json({ message: "بيانات غير صحيحة" });
     }
   });
 
   app.put("/api/invoices/:id", requireAuth, async (req, res) => {
     try {
-      const invoiceId = parseInt(req.params.id);
-      console.log('📝 Invoice update request for ID:', invoiceId, 'body:', req.body);
-      
+      const id = parseInt(req.params.id);
       const invoiceData = insertInvoiceSchema.partial().parse(req.body);
-      console.log('✅ Parsed update data:', invoiceData);
-      
-      const updatedInvoice = await storage.updateInvoice(invoiceId, invoiceData);
-      
-      if (!updatedInvoice) {
-        return res.status(404).json({ message: "الفاتورة غير موجودة" });
-      }
+      const updatedInvoice = await storage.updateInvoice(id, invoiceData);
       
       await storage.logActivity({
         userId: req.user!.id,
         action: "update_invoice",
         targetType: "invoice",
-        targetId: invoiceId,
-        details: `تم تحديث فاتورة رقم ${invoiceId}`,
+        targetId: id,
+        details: `تم تحديث الفاتورة: ${updatedInvoice.amount} جنيه`,
       });
       
       res.json(updatedInvoice);
     } catch (error) {
-      console.error('❌ Invoice update error:', error);
-      if (error instanceof Error) {
-        res.status(400).json({ 
-          message: "خطأ في تحديث الفاتورة", 
-          details: error.message 
-        });
-      } else {
-        res.status(400).json({ message: "خطأ في تحديث الفاتورة" });
-      }
+      res.status(400).json({ message: "خطأ في التحديث" });
+    }
+  });
+
+  app.delete("/api/invoices/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteInvoice(id);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "delete_invoice",
+        targetType: "invoice",
+        targetId: id,
+        details: "تم حذف فاتورة",
+      });
+      
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في الحذف" });
     }
   });
 
   // Tasks routes
   app.get("/api/tasks", requireAuth, async (req, res) => {
     try {
-      const tasks = await storage.getTasksForUser(req.user!.id);
+      const tasks = await storage.getAllTasks();
       res.json(tasks);
     } catch (error) {
       res.status(500).json({ message: "خطأ في استرجاع المهام" });
@@ -454,6 +624,45 @@ ${JSON.stringify(caseDetails, null, 2)}
       res.status(201).json(task);
     } catch (error) {
       res.status(400).json({ message: "بيانات غير صحيحة" });
+    }
+  });
+
+  app.put("/api/tasks/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const taskData = insertTaskSchema.partial().parse(req.body);
+      const updatedTask = await storage.updateTask(id, taskData);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "update_task",
+        targetType: "task",
+        targetId: id,
+        details: `تم تحديث المهمة: ${updatedTask.title}`,
+      });
+      
+      res.json(updatedTask);
+    } catch (error) {
+      res.status(400).json({ message: "خطأ في التحديث" });
+    }
+  });
+
+  app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTask(id);
+      
+      await storage.logActivity({
+        userId: req.user!.id,
+        action: "delete_task",
+        targetType: "task",
+        targetId: id,
+        details: "تم حذف مهمة",
+      });
+      
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "خطأ في الحذف" });
     }
   });
 
@@ -751,28 +960,22 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/clients/:id/documents", requireAuth, async (req, res) => {
     try {
       const clientId = parseInt(req.params.id);
-      console.log('🔍 Fetching documents for client ID:', clientId);
       
       // Get all cases for this client
       const allCases = await storage.getAllCases();
-      console.log('📋 All cases:', allCases.map(c => ({ id: c.id, title: c.title, clientId: c.clientId })));
       
       const clientCases = allCases.filter(c => c.clientId === clientId);
-      console.log('👤 Client cases:', clientCases.map(c => ({ id: c.id, title: c.title })));
       
       const caseIds = clientCases.map(c => c.id);
       
       if (caseIds.length === 0) {
-        console.log('❌ No cases found for client');
         return res.json([]);
       }
       
       // Get all documents and filter by client's cases
       const allDocuments = await storage.getAllDocuments();
-      console.log('📄 All documents:', allDocuments.map(d => ({ id: d.id, title: d.title, caseId: d.caseId, description: d.description })));
       
       const clientDocuments = allDocuments.filter(doc => caseIds.includes(doc.caseId));
-      console.log('📄 Client documents:', clientDocuments.map(d => ({ id: d.id, title: d.title, caseId: d.caseId })));
       
       // Add case titles to documents
       const documentsWithCaseInfo = clientDocuments.map(doc => {
@@ -790,22 +993,8 @@ ${JSON.stringify(caseDetails, null, 2)}
         return dateB - dateA;
       });
       
-      console.log('✅ Final documents with case info:', documentsWithCaseInfo.map(d => ({ 
-        id: d.id, 
-        title: d.title, 
-        caseId: d.caseId, 
-        caseTitle: d.caseTitle,
-        description: d.description,
-        fileSize: d.fileSize,
-        fileType: d.fileType,
-        uploadedAt: d.uploadedAt
-      })));
-      
-
-      
       res.json(documentsWithCaseInfo);
     } catch (error) {
-      console.error('❌ Error fetching client documents:', error);
       res.status(500).json({ message: "خطأ في استرجاع المستندات" });
     }
   });
@@ -814,55 +1003,28 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/documents/:id/download", requireAuth, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      console.log('🔍 Downloading document ID:', documentId);
       
       const document = await storage.getDocument(documentId);
       
       if (!document) {
-        console.log('❌ Document not found for ID:', documentId);
         const allDocuments = await storage.getAllDocuments();
-        console.log('Available documents:', allDocuments.map(d => ({ id: d.id, title: d.title })));
         return res.status(404).json({ message: "المستند غير موجود" });
       }
       
-      console.log('📄 Document found:', { id: document.id, title: document.title, filePath: document.filePath });
-      
       // Handle both absolute and relative file paths
       let filePath = document.filePath;
-      console.log('🔍 Original filePath:', filePath);
       
       if (path.isAbsolute(filePath)) {
-        console.log('📁 Trying absolute path:', filePath);
         try {
           await fs.access(filePath);
-          console.log('✅ Absolute path works');
         } catch (error) {
-          console.log('❌ Absolute path failed:', error instanceof Error ? error.message : 'Unknown error');
           // If absolute path doesn't work, try relative path in uploads
           const fileName = path.basename(filePath);
           filePath = path.join(process.cwd(), 'uploads', fileName);
-          console.log('📁 Trying fallback path:', filePath);
-          try {
-            await fs.access(filePath);
-            console.log('✅ Fallback path works');
-          } catch (fallbackError) {
-            console.log('❌ Fallback path failed:', fallbackError instanceof Error ? fallbackError.message : 'Unknown error');
-            return res.status(404).json({ message: "الملف غير موجود" });
-          }
         }
       } else {
         filePath = path.join(process.cwd(), filePath);
-        console.log('📁 Trying relative path:', filePath);
-        try {
-          await fs.access(filePath);
-          console.log('✅ Relative path works');
-        } catch (error) {
-          console.log('❌ Relative path failed:', error instanceof Error ? error.message : 'Unknown error');
-          return res.status(404).json({ message: "الملف غير موجود" });
-        }
       }
-      
-      console.log('🎯 Final filePath:', filePath);
       
       // Set headers for download
       const originalFileName = document.title;
@@ -890,16 +1052,8 @@ ${JSON.stringify(caseDetails, null, 2)}
       
       const fileName = originalFileName + fileExtension;
       
-      console.log('📝 Filename generation:', {
-        originalFileName,
-        fileExtension,
-        finalFileName: fileName,
-        fileType: document.fileType
-      });
-      
       // Encode filename for proper download with Arabic support
       const encodedFileName = encodeURIComponent(fileName);
-      console.log('🔤 Encoded filename:', encodedFileName);
       
       res.setHeader('Content-Disposition', `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`);
       res.setHeader('Content-Type', document.fileType || 'application/octet-stream');
@@ -908,7 +1062,6 @@ ${JSON.stringify(caseDetails, null, 2)}
       // Stream the file
       const fileStream = createReadStream(filePath);
       fileStream.on('error', (error) => {
-        console.error('❌ File stream error:', error);
         if (!res.headersSent) {
           res.status(500).json({ message: "خطأ في قراءة الملف" });
         }
@@ -916,12 +1069,10 @@ ${JSON.stringify(caseDetails, null, 2)}
       
       // Handle response errors
       res.on('error', (error) => {
-        console.error('❌ Response error:', error);
       });
       
       fileStream.pipe(res);
     } catch (error) {
-      console.error('❌ Download error:', error);
       res.status(500).json({ message: "خطأ في تحميل المستند", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -930,55 +1081,28 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/documents/:id/view", requireAuth, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      console.log('🔍 Viewing document ID:', documentId);
       
       const document = await storage.getDocument(documentId);
       
       if (!document) {
-        console.log('❌ Document not found for ID:', documentId);
         const allDocuments = await storage.getAllDocuments();
-        console.log('Available documents for view:', allDocuments.map(d => ({ id: d.id, title: d.title })));
         return res.status(404).json({ message: "المستند غير موجود" });
       }
       
-      console.log('📄 Document found:', { id: document.id, title: document.title, filePath: document.filePath });
-      
       // Handle both absolute and relative file paths
       let filePath = document.filePath;
-      console.log('🔍 Original filePath:', filePath);
       
       if (path.isAbsolute(filePath)) {
-        console.log('📁 Trying absolute path:', filePath);
         try {
           await fs.access(filePath);
-          console.log('✅ Absolute path works');
         } catch (error) {
-          console.log('❌ Absolute path failed:', error instanceof Error ? error.message : 'Unknown error');
           // If absolute path doesn't work, try relative path in uploads
           const fileName = path.basename(filePath);
           filePath = path.join(process.cwd(), 'uploads', fileName);
-          console.log('📁 Trying fallback path:', filePath);
-          try {
-            await fs.access(filePath);
-            console.log('✅ Fallback path works');
-          } catch (fallbackError) {
-            console.log('❌ Fallback path failed:', fallbackError instanceof Error ? fallbackError.message : 'Unknown error');
-            return res.status(404).json({ message: "الملف غير موجود" });
-          }
         }
       } else {
         filePath = path.join(process.cwd(), filePath);
-        console.log('📁 Trying relative path:', filePath);
-        try {
-          await fs.access(filePath);
-          console.log('✅ Relative path works');
-        } catch (error) {
-          console.log('❌ Relative path failed:', error instanceof Error ? error.message : 'Unknown error');
-          return res.status(404).json({ message: "الملف غير موجود" });
-        }
       }
-      
-      console.log('🎯 Final filePath:', filePath);
       
       // Set headers for viewing
       res.setHeader('Content-Type', document.fileType || 'application/octet-stream');
@@ -987,7 +1111,6 @@ ${JSON.stringify(caseDetails, null, 2)}
       // Stream the file
       const fileStream = createReadStream(filePath);
       fileStream.on('error', (error) => {
-        console.error('❌ File stream error:', error);
         if (!res.headersSent) {
           res.status(500).json({ message: "خطأ في قراءة الملف" });
         }
@@ -995,12 +1118,10 @@ ${JSON.stringify(caseDetails, null, 2)}
       
       // Handle response errors
       res.on('error', (error) => {
-        console.error('❌ Response error:', error);
       });
       
       fileStream.pipe(res);
     } catch (error) {
-      console.error('❌ View error:', error);
       res.status(500).json({ message: "خطأ في عرض المستند", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -1009,7 +1130,6 @@ ${JSON.stringify(caseDetails, null, 2)}
   app.get("/api/test/file-path/:id", requireAuth, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      console.log('🧪 Testing file path for document ID:', documentId);
       
       const document = await storage.getDocument(documentId);
       if (!document) {

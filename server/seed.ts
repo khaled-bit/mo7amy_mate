@@ -56,21 +56,12 @@ const seedUsers = [
 
 async function seedDatabase() {
   try {
-    console.log("🌱 Starting database seeding...");
-
     // Check if users already exist
     const existingUsers = await db.select().from(users);
     if (existingUsers.length > 0) {
-      console.log("📋 Users already exist in the database. Skipping seed.");
-      console.log(`Found ${existingUsers.length} existing users:`);
-      existingUsers.forEach(user => 
-        console.log(`  - ${user.username} (${user.role}): ${user.name}`)
-      );
       return;
     }
 
-    console.log("👤 Seeding users...");
-    
     for (const userData of seedUsers) {
       const hashedPassword = await hashPassword(userData.password);
       
@@ -82,15 +73,11 @@ async function seedDatabase() {
         phone: userData.phone,
         role: userData.role,
       }).returning();
-
-      console.log(`✅ Created user: ${insertedUser.username} (${insertedUser.role})`);
     }
 
     // Check if we need to create sample data
     const existingClients = await db.select().from(clients);
     if (existingClients.length === 0) {
-      console.log("👥 Creating sample clients...");
-      
       const [client1] = await db.insert(clients).values({
         name: "أحمد محمد علي",
         phone: "+966501234567",
@@ -111,10 +98,6 @@ async function seedDatabase() {
         createdBy: 1,
       }).returning();
 
-      console.log("✅ Created sample clients");
-
-      console.log("⚖️ Creating sample cases...");
-      
       const [case1] = await db.insert(cases).values({
         title: "قضية تجارية - شركة التقنية المتقدمة",
         type: "commercial",
@@ -135,10 +118,6 @@ async function seedDatabase() {
         createdBy: 1,
       }).returning();
 
-      console.log("✅ Created sample cases");
-
-      console.log("📄 Creating sample documents...");
-      
       await db.insert(documents).values([
         {
           caseId: case1.id,
@@ -177,24 +156,10 @@ async function seedDatabase() {
           uploadedBy: 1,
         }
       ]);
-
-      console.log("✅ Created sample documents");
     }
 
-    console.log("\n🎉 Database seeding completed successfully!");
-    console.log("\n📋 Default Login Credentials:");
-    console.log("┌─────────────┬──────────────┬────────────────────────┐");
-    console.log("│ Username    │ Password     │ Role                   │");
-    console.log("├─────────────┼──────────────┼────────────────────────┤");
-    console.log("│ admin       │ admin123     │ Administrator          │");
-    console.log("│ lawyer1     │ lawyer123    │ Lawyer                 │");
-    console.log("│ lawyer2     │ lawyer123    │ Lawyer                 │");
-    console.log("│ assistant1  │ assistant123 │ Assistant              │");
-    console.log("│ assistant2  │ assistant123 │ Assistant              │");
-    console.log("└─────────────┴──────────────┴────────────────────────┘");
-    
+    return;
   } catch (error) {
-    console.error("❌ Error seeding database:", error);
     throw error;
   }
 }
@@ -202,11 +167,9 @@ async function seedDatabase() {
 // Run the seed function
 seedDatabase()
   .then(() => {
-    console.log("✨ Seed script completed");
     process.exit(0);
   })
   .catch((error) => {
-    console.error("💥 Seed script failed:", error);
     process.exit(1);
   });
 

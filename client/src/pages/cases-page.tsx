@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
 import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +32,8 @@ export default function CasesPage() {
   const [open, setOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<Case | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -112,6 +115,27 @@ export default function CasesPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/cases/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في حذف القضية");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      toast({ title: "تم حذف القضية بنجاح" });
+    },
+    onError: (error) => {
+      toast({ title: "خطأ في حذف القضية", description: error.message, variant: "destructive" });
+    },
+  });
+
   const onSubmit = (data: InsertCase) => {
     if (editingCase) {
       updateMutation.mutate({ id: editingCase.id, data });
@@ -136,6 +160,19 @@ export default function CasesPage() {
     setOpen(true);
   };
 
+  const handleDelete = (caseItem: Case) => {
+    setCaseToDelete(caseItem);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (caseToDelete) {
+      deleteMutation.mutate(caseToDelete.id);
+      setDeleteModalOpen(false);
+      setCaseToDelete(null);
+    }
+  };
+
   const filteredCases = cases?.filter(caseItem =>
     caseItem.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     caseItem.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -145,6 +182,84 @@ export default function CasesPage() {
   const getClientName = (clientId: number) => {
     return clients?.find(c => c.id === clientId)?.name || "غير محدد";
   };
+
+  // Define columns for DataTable
+  const columns: DataTableColumn<Case>[] = [
+    {
+      key: "title",
+      label: "عنوان القضية",
+      sortable: true,
+      render: (row) => <span className="font-medium">{row.title}</span>,
+    },
+    {
+      key: "type",
+      label: "النوع",
+      sortable: true,
+    },
+    {
+      key: "clientId",
+      label: "العميل",
+      sortable: true,
+      render: (row) => getClientName(row.clientId),
+    },
+    {
+      key: "court",
+      label: "المحكمة",
+      sortable: true,
+      render: (row) => row.court || "-",
+    },
+    {
+      key: "status",
+      label: "الحالة",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <Badge className={statusMap[row.status].color}>
+          {statusMap[row.status].label}
+        </Badge>
+      ),
+    },
+    {
+      key: "startDate",
+      label: "تاريخ البداية",
+      sortable: true,
+      align: "center",
+      render: (row) => row.startDate ? formatDualDate(row.startDate) : "-",
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+          {user && (user.role === 'admin' || user.role === 'lawyer') && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setLocation(`/cases/${row.id}`)}
+            >
+              تشغيل التحليل الذكي
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
@@ -360,77 +475,26 @@ export default function CasesPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>عنوان القضية</TableHead>
-                    <TableHead>النوع</TableHead>
-                    <TableHead>العميل</TableHead>
-                    <TableHead>المحكمة</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>تاريخ البداية</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCases.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        <Eye className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>لا توجد قضايا</p>
-                        <p className="text-sm">ابدأ بإضافة قضية جديدة</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredCases.map((caseItem) => (
-                      <TableRow key={caseItem.id}>
-                        <TableCell className="font-medium">{caseItem.title}</TableCell>
-                        <TableCell>{caseItem.type}</TableCell>
-                        <TableCell>{getClientName(caseItem.clientId)}</TableCell>
-                        <TableCell>{caseItem.court || "-"}</TableCell>
-                        <TableCell>
-                          <Badge className={statusMap[caseItem.status].color}>
-                            {statusMap[caseItem.status].label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {caseItem.startDate ? formatDualDate(caseItem.startDate) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleEdit(caseItem)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setLocation(`/cases/${caseItem.id}`)}
-                            className="ml-2"
-                          >
-                            تفاصيل
-                          </Button>
-                          {user && (user.role === 'admin' || user.role === 'lawyer') && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => setLocation(`/cases/${caseItem.id}`)}
-                              className="ml-2"
-                            >
-                              تشغيل التحليل الذكي
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredCases}
+                initialSort={{ key: "title", direction: "asc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteModalOpen}
+          onOpenChange={setDeleteModalOpen}
+          onConfirm={confirmDelete}
+          title="حذف القضية"
+          description="هل أنت متأكد من حذف هذه القضية؟ لا يمكن التراجع عن هذا الإجراء."
+          itemName={caseToDelete?.title}
+          isLoading={deleteMutation.isPending}
+        />
       </div>
     </Layout>
   );

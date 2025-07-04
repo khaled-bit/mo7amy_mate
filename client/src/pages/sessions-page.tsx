@@ -7,13 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
 import { Plus, Search, Edit, Trash2, Calendar, Clock, MapPin, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { insertSessionSchema, type Session, type InsertSession, type Case } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +33,10 @@ export default function SessionsPage() {
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [conflictWarning, setConflictWarning] = useState("");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: sessions, isLoading } = useQuery<Session[]>({
     queryKey: ["/api/sessions"],
@@ -129,9 +133,16 @@ export default function SessionsPage() {
     setOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذه الجلسة؟")) {
-      deleteMutation.mutate(id);
+  const handleDelete = (session: Session) => {
+    setSessionToDelete(session);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (sessionToDelete) {
+      deleteMutation.mutate(sessionToDelete.id);
+      setDeleteModalOpen(false);
+      setSessionToDelete(null);
     }
   };
 
@@ -143,6 +154,95 @@ export default function SessionsPage() {
   const getCaseTitle = (caseId: number) => {
     return cases?.find(c => c.id === caseId)?.title || "غير محدد";
   };
+
+  // Define columns for DataTable
+  const columns: DataTableColumn<Session>[] = [
+    {
+      key: "title",
+      label: "عنوان الجلسة",
+      sortable: true,
+      render: (row) => <span className="font-medium">{row.title}</span>,
+    },
+    {
+      key: "caseId",
+      label: "القضية",
+      sortable: true,
+      render: (row) => getCaseTitle(row.caseId),
+    },
+    {
+      key: "date",
+      label: "التاريخ",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <Calendar className="w-4 h-4 text-blue-600" />
+          <span>{row.date ? formatDualDate(row.date.toString()) : "-"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "time",
+      label: "الوقت",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <Clock className="w-4 h-4 text-green-600" />
+          <span>{row.time || "-"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "location",
+      label: "الموقع",
+      sortable: true,
+      render: (row) => (
+        row.location ? (
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-muted-foreground" />
+            {row.location}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )
+      ),
+    },
+    {
+      key: "status",
+      label: "الحالة",
+      sortable: true,
+      render: (row) => (
+        <Badge className={statusMap[row.status].color}>
+          {statusMap[row.status].label}
+        </Badge>
+      ),
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+                    <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
@@ -343,86 +443,26 @@ export default function SessionsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>عنوان الجلسة</TableHead>
-                    <TableHead>القضية</TableHead>
-                    <TableHead>التاريخ</TableHead>
-                    <TableHead>الوقت</TableHead>
-                    <TableHead>الموقع</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSessions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>لا توجد جلسات مجدولة</p>
-                        <p className="text-sm">ابدأ بجدولة جلسة جديدة</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredSessions.map((session) => (
-                      <TableRow key={session.id}>
-                        <TableCell className="font-medium">{session.title}</TableCell>
-                        <TableCell>{getCaseTitle(session.caseId)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-muted-foreground" />
-                            {formatDualDate(session.date)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-muted-foreground" />
-                            {session.time}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {session.location ? (
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-4 h-4 text-muted-foreground" />
-                              {session.location}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={statusMap[session.status].color}>
-                            {statusMap[session.status].label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleEdit(session)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleDelete(session.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredSessions}
+                initialSort={{ key: "date", direction: "desc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteModalOpen}
+          onOpenChange={setDeleteModalOpen}
+          onConfirm={confirmDelete}
+          title="حذف الجلسة"
+          description="هل أنت متأكد من حذف هذه الجلسة؟ لا يمكن التراجع عن هذا الإجراء."
+          itemName={sessionToDelete?.title}
+          isLoading={deleteMutation.isPending}
+        />
       </div>
     </Layout>
   );

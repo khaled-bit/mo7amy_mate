@@ -10,14 +10,15 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, Upload, Download, Trash2, Search } from "lucide-react";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
+import { FileText, Upload, Download, Trash2, Search, Plus, Edit, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
-import { type Document, type Case } from "@shared/schema";
+import { type Document, type Case, type InsertDocument, insertDocumentSchema } from "@shared/schema";
 
 const uploadSchema = z.object({
   caseId: z.number().min(1, "يجب اختيار القضية"),
@@ -33,15 +34,20 @@ export default function DocumentsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editingDocument, setEditingDocument] = useState<Document | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
 
-  const form = useForm<UploadFormData>({
-    resolver: zodResolver(uploadSchema),
+  const form = useForm<InsertDocument>({
+    resolver: zodResolver(insertDocumentSchema),
     defaultValues: {
-      caseId: undefined,
+      caseId: null,
       title: "",
       description: "",
-      file: undefined,
+      fileType: "",
+      fileSize: 0,
     },
   });
 
@@ -59,13 +65,16 @@ export default function DocumentsPage() {
 
   // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: async (data: UploadFormData) => {
+    mutationFn: async (data: InsertDocument) => {
       const formData = new FormData();
       formData.append("caseId", data.caseId?.toString() || "");
       formData.append("title", data.title);
       formData.append("description", data.description || "");
-      if (data.file && data.file[0]) {
-        formData.append("file", data.file[0]);
+      formData.append("fileType", data.fileType);
+      formData.append("fileSize", data.fileSize.toString());
+      
+      if (selectedFile) {
+        formData.append("file", selectedFile);
       }
 
       const response = await fetch("/api/documents", {
@@ -75,19 +84,20 @@ export default function DocumentsPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "فشل في رفع المستند");
+        throw new Error(error.message || "فشل في إنشاء المستند");
       }
 
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
-      toast({ title: "تم رفع المستند بنجاح" });
+      toast({ title: "تم إنشاء المستند بنجاح" });
       setOpen(false);
       form.reset();
+      setSelectedFile(null);
     },
     onError: (error) => {
-      toast({ title: "خطأ في رفع المستند", description: error.message, variant: "destructive" });
+      toast({ title: "خطأ في إنشاء المستند", description: error.message, variant: "destructive" });
     },
   });
 
@@ -112,26 +122,60 @@ export default function DocumentsPage() {
     },
   });
 
-  const onSubmit = (data: UploadFormData) => {
-    uploadMutation.mutate(data);
-  };
-
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا المستند؟")) {
-      deleteMutation.mutate(id);
+  const onSubmit = (data: InsertDocument) => {
+    if (editingDocument) {
+      uploadMutation.mutate({ ...data, id: editingDocument.id });
+    } else {
+      uploadMutation.mutate(data);
     }
   };
 
-  const getCaseTitle = (caseId: number) => {
+  const handleEdit = (document: Document) => {
+    setEditingDocument(document);
+    form.reset({
+      caseId: document.caseId,
+      title: document.title,
+      description: document.description || "",
+      fileType: document.fileType || "",
+      fileSize: document.fileSize || 0,
+    });
+    setOpen(true);
+  };
+
+  const handleDelete = (document: Document) => {
+    setDocumentToDelete(document);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (documentToDelete) {
+      deleteMutation.mutate(documentToDelete.id);
+      setDeleteModalOpen(false);
+      setDocumentToDelete(null);
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      form.setValue("fileType", file.type);
+      form.setValue("fileSize", file.size);
+    }
+  };
+
+  const getCaseTitle = (caseId: number | null) => {
+    if (!caseId) return "غير محدد";
     const caseItem = cases.find(c => c.id === caseId);
     return caseItem?.title || "غير محدد";
   };
 
-  const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return "غير محدد";
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const getFileIcon = (fileType: string | null) => {
@@ -146,8 +190,95 @@ export default function DocumentsPage() {
   // Filter documents based on search term
   const filteredDocuments = documents.filter(doc =>
     doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    doc.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     getCaseTitle(doc.caseId).toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Define columns for DataTable
+  const columns: DataTableColumn<Document>[] = [
+    {
+      key: "title",
+      label: "عنوان المستند",
+      sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          {getFileIcon(row.fileType)}
+          <span className="font-medium">{row.title}</span>
+        </div>
+      ),
+    },
+    {
+      key: "caseId",
+      label: "القضية",
+      sortable: true,
+      render: (row) => getCaseTitle(row.caseId),
+    },
+    {
+      key: "fileType",
+      label: "نوع الملف",
+      sortable: true,
+      align: "center",
+      render: (row) => row.fileType || "-",
+    },
+    {
+      key: "fileSize",
+      label: "حجم الملف",
+      sortable: true,
+      align: "center",
+      render: (row) => formatFileSize(row.fileSize || 0),
+    },
+    {
+      key: "description",
+      label: "الوصف",
+      sortable: true,
+      render: (row) => row.description || "-",
+    },
+    {
+      key: "uploadedAt",
+      label: "تاريخ الرفع",
+      sortable: true,
+      align: "center",
+      render: (row) => row.uploadedAt ? formatDualDate(row.uploadedAt.toString()) : "-",
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`/api/documents/${row.id}/view`, '_blank')}
+          >
+            <Eye className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open(`/api/documents/${row.id}/download`, '_blank')}
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
@@ -166,14 +297,16 @@ export default function DocumentsPage() {
           
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => form.reset()}>
-                <Upload className="w-4 h-4 ml-2" />
-                رفع مستند جديد
+              <Button onClick={() => { setEditingDocument(null); form.reset(); setSelectedFile(null); }}>
+                <Plus className="w-4 h-4 ml-2" />
+                إضافة مستند جديد
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>رفع مستند جديد</DialogTitle>
+                <DialogTitle>
+                  {editingDocument ? "تعديل المستند" : "إضافة مستند جديد"}
+                </DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -183,13 +316,14 @@ export default function DocumentsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>القضية</FormLabel>
-                        <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value?.toString()}>
+                        <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="اختر القضية" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            <SelectItem value="">غير محدد</SelectItem>
                             {cases?.map((caseItem) => (
                               <SelectItem key={caseItem.id} value={caseItem.id.toString()}>
                                 {caseItem.title}
@@ -201,7 +335,7 @@ export default function DocumentsPage() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <FormField
                     control={form.control}
                     name="title"
@@ -209,7 +343,7 @@ export default function DocumentsPage() {
                       <FormItem>
                         <FormLabel>عنوان المستند</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -221,32 +355,37 @@ export default function DocumentsPage() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>الوصف (اختياري)</FormLabel>
+                        <FormLabel>الوصف</FormLabel>
                         <FormControl>
-                          <Textarea {...field} />
+                          <Textarea {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="file"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>الملف</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="file"
-                            onChange={(e) => field.onChange(e.target.files)}
-                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!editingDocument && (
+                    <FormField
+                      control={form.control}
+                      name="fileType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الملف</FormLabel>
+                          <FormControl>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="file"
+                                onChange={handleFileChange}
+                                className="flex-1"
+                              />
+                              <Upload className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <div className="flex gap-2">
                     <Button 
@@ -254,7 +393,7 @@ export default function DocumentsPage() {
                       disabled={uploadMutation.isPending}
                       className="flex-1"
                     >
-                      رفع المستند
+                      {editingDocument ? "تحديث" : "إضافة"}
                     </Button>
                     <Button 
                       type="button" 
@@ -282,77 +421,26 @@ export default function DocumentsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>اسم المستند</TableHead>
-                    <TableHead>القضية</TableHead>
-                    <TableHead>النوع</TableHead>
-                    <TableHead>الحجم</TableHead>
-                    <TableHead>تاريخ الرفع</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredDocuments.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>لا توجد مستندات</p>
-                        <p className="text-sm">ابدأ برفع مستند جديد</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredDocuments.map((document) => (
-                      <TableRow key={document.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getFileIcon(document.fileType)}
-                            <div>
-                              <p className="font-medium">{document.title}</p>
-                              {document.description && (
-                                <p className="text-sm text-muted-foreground">{document.description}</p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getCaseTitle(document.caseId)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {document.fileType?.split('/').pop()?.toUpperCase() || 'غير محدد'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{formatFileSize(document.fileSize)}</TableCell>
-                        <TableCell>
-                          {document.uploadedAt ? formatDualDate(document.uploadedAt) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => window.open(`/api/documents/${document.id}/download`, '_blank')}
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleDelete(document.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredDocuments}
+                initialSort={{ key: "uploadedAt", direction: "desc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteConfirmationModal
+          open={deleteModalOpen}
+          onOpenChange={setDeleteModalOpen}
+          onConfirm={confirmDelete}
+          title="حذف المستند"
+          description="هل أنت متأكد من حذف هذا المستند؟ لا يمكن التراجع عن هذا الإجراء."
+          itemName={documentToDelete?.title}
+          isLoading={deleteMutation.isPending}
+        />
       </div>
     </Layout>
   );

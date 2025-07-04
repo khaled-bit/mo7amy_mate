@@ -48,6 +48,7 @@ export interface IStorage {
   getDocumentsByCase(caseId: number): Promise<Document[]>;
   getDocument(id: number): Promise<Document | undefined>;
   createDocument(document: InsertDocument & { uploadedBy: number }): Promise<Document>;
+  updateDocument(id: number, document: Partial<InsertDocument>): Promise<Document>;
   deleteDocument(id: number): Promise<void>;
 
   // Invoices
@@ -73,6 +74,17 @@ export interface IStorage {
   // Dashboard Stats
   getDashboardStats(userId: number, role: string): Promise<any>;
   getSidebarStats(userId: number, role: string): Promise<any>;
+
+  // Client deletion constraints
+  checkClientDeletionConstraints(id: number): Promise<{
+    canDelete: boolean;
+    relatedCases: number;
+    relatedInvoices: number;
+    relatedTasks: number;
+    relatedSessions: number;
+    relatedDocuments: number;
+    message?: string;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -126,6 +138,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClient(id: number): Promise<void> {
+    // First, check if client exists
+    const client = await this.getClient(id);
+    if (!client) {
+      throw new Error("العميل غير موجود");
+    }
+
+    // Check for related cases
+    const relatedCases = await db.select().from(cases).where(eq(cases.clientId, id));
+    
+    if (relatedCases.length > 0) {
+      // Delete related records in the correct order to avoid foreign key violations
+      for (const caseItem of relatedCases) {
+        // Delete related sessions
+        await db.delete(sessions).where(eq(sessions.caseId, caseItem.id));
+        
+        // Delete related documents
+        await db.delete(documents).where(eq(documents.caseId, caseItem.id));
+        
+        // Delete related invoices
+        await db.delete(invoices).where(eq(invoices.caseId, caseItem.id));
+        
+        // Delete related tasks
+        await db.delete(tasks).where(eq(tasks.caseId, caseItem.id));
+        
+        // Delete case-user assignments
+        await db.delete(caseUsers).where(eq(caseUsers.caseId, caseItem.id));
+      }
+      
+      // Delete all related cases
+      await db.delete(cases).where(eq(cases.clientId, id));
+    }
+    
+    // Finally delete the client
     await db.delete(clients).where(eq(clients.id, id));
   }
 
@@ -172,6 +217,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCase(id: number): Promise<void> {
+    // Check if case exists first
+    const caseDetails = await this.getCase(id);
+    if (!caseDetails) {
+      throw new Error("القضية غير موجودة");
+    }
+
+    // Delete all related records in the correct order to avoid foreign key violations
+    
+    // 1. Delete case-user assignments
+    await db.delete(caseUsers).where(eq(caseUsers.caseId, id));
+    
+    // 2. Delete sessions
+    await db.delete(sessions).where(eq(sessions.caseId, id));
+    
+    // 3. Delete documents
+    await db.delete(documents).where(eq(documents.caseId, id));
+    
+    // 4. Delete invoices (set caseId to null instead of deleting)
+    await db.update(invoices).set({ caseId: null }).where(eq(invoices.caseId, id));
+    
+    // 5. Delete tasks
+    await db.delete(tasks).where(eq(tasks.caseId, id));
+    
+    // 6. Finally delete the case
     await db.delete(cases).where(eq(cases.id, id));
   }
 
@@ -247,6 +316,11 @@ export class DatabaseStorage implements IStorage {
   async createDocument(document: InsertDocument & { uploadedBy: number }): Promise<Document> {
     const [newDocument] = await db.insert(documents).values(document).returning();
     return newDocument;
+  }
+
+  async updateDocument(id: number, documentData: Partial<InsertDocument>): Promise<Document> {
+    const [document] = await db.update(documents).set(documentData).where(eq(documents.id, id)).returning();
+    return document;
   }
 
   async deleteDocument(id: number): Promise<void> {
@@ -358,6 +432,77 @@ export class DatabaseStorage implements IStorage {
       activeCases: activeCases[0].count,
       pendingTasks: pendingTasks[0].count,
       pendingInvoices: pendingInvoices[0].count,
+    };
+  }
+
+  // Client deletion constraints
+  async checkClientDeletionConstraints(id: number): Promise<{
+    canDelete: boolean;
+    relatedCases: number;
+    relatedInvoices: number;
+    relatedTasks: number;
+    relatedSessions: number;
+    relatedDocuments: number;
+    message?: string;
+  }> {
+    const client = await this.getClient(id);
+    if (!client) {
+      return {
+        canDelete: false,
+        relatedCases: 0,
+        relatedInvoices: 0,
+        relatedTasks: 0,
+        relatedSessions: 0,
+        relatedDocuments: 0,
+        message: "العميل غير موجود"
+      };
+    }
+
+    // Check for related cases
+    const relatedCases = await db.select().from(cases).where(eq(cases.clientId, id));
+    
+    let relatedInvoices = 0;
+    let relatedTasks = 0;
+    let relatedSessions = 0;
+    let relatedDocuments = 0;
+
+    // Check for related records in each case
+    for (const caseItem of relatedCases) {
+      const [sessionsCount] = await db.select({ count: sql<number>`count(*)` }).from(sessions).where(eq(sessions.caseId, caseItem.id));
+      const [documentsCount] = await db.select({ count: sql<number>`count(*)` }).from(documents).where(eq(documents.caseId, caseItem.id));
+      const [invoicesCount] = await db.select({ count: sql<number>`count(*)` }).from(invoices).where(eq(invoices.caseId, caseItem.id));
+      const [tasksCount] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(eq(tasks.caseId, caseItem.id));
+      
+      relatedSessions += Number(sessionsCount.count);
+      relatedDocuments += Number(documentsCount.count);
+      relatedInvoices += Number(invoicesCount.count);
+      relatedTasks += Number(tasksCount.count);
+    }
+
+    // Do NOT include orphaned invoices (caseId IS NULL) in the client's constraints
+
+    const canDelete = relatedCases.length === 0 && relatedInvoices === 0 && relatedTasks === 0 && relatedSessions === 0 && relatedDocuments === 0;
+
+    let message = "";
+    if (!canDelete) {
+      const constraints = [];
+      if (relatedCases.length > 0) constraints.push(`${relatedCases.length} قضية`);
+      if (relatedSessions > 0) constraints.push(`${relatedSessions} جلسة`);
+      if (relatedDocuments > 0) constraints.push(`${relatedDocuments} مستند`);
+      if (relatedInvoices > 0) constraints.push(`${relatedInvoices} فاتورة`);
+      if (relatedTasks > 0) constraints.push(`${relatedTasks} مهمة`);
+      
+      message = `لا يمكن حذف العميل لوجود: ${constraints.join('، ')} مرتبطة به`;
+    }
+
+    return {
+      canDelete,
+      relatedCases: relatedCases.length,
+      relatedInvoices,
+      relatedTasks,
+      relatedSessions,
+      relatedDocuments,
+      message
     };
   }
 }

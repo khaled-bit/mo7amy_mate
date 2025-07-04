@@ -64,10 +64,6 @@ export default function CaseDetailsPage() {
 
   if (!caseDetails && fetchedCase) caseDetails = fetchedCase;
 
-  console.log('caseDetails', caseDetails);
-
-  // TODO: Fetch client name, etc.
-
   const handleAIAnalysis = async () => {
     if (!id) return;
     setAiLoading(true);

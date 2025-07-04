@@ -292,7 +292,6 @@ export default function ReportsPage() {
       document.body.removeChild(link);
       toast({ title: "تم التصدير بنجاح", description: `تم حفظ التقرير كـ ${fileName}` });
     } catch (error) {
-      console.error('CSV export error:', error);
       toast({ title: "خطأ في التصدير", description: "حدث خطأ أثناء إنشاء ملف CSV", variant: "destructive" });
     } finally {
       setIsGeneratingPDF(false);
@@ -503,7 +502,6 @@ export default function ReportsPage() {
       pdf.save(fileName);
       toast({ title: "تم التصدير بنجاح", description: `تم حفظ التقرير كـ ${fileName}` });
     } catch (error) {
-      console.error('PDF generation error:', error);
       toast({ title: "خطأ في التصدير", description: "حدث خطأ أثناء إنشاء ملف PDF", variant: "destructive" });
     } finally {
       setIsGeneratingPDF(false);

@@ -1,228 +1,233 @@
 import Layout from "@/components/layout";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, UserCog, Shield, Users, Mail, Phone } from "lucide-react";
+import { Plus, Search, Edit, Trash2, User, Shield } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { insertUserSchema, type User, type InsertUser } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
-
-const createUserSchema = insertUserSchema.extend({
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "كلمات المرور غير متطابقة",
-  path: ["confirmPassword"],
-});
-
-type CreateUserFormData = z.infer<typeof createUserSchema>;
-
-const roleMap = {
-  admin: { label: "مدير", color: "bg-red-100 text-red-800", icon: Shield },
-  lawyer: { label: "محامي", color: "bg-blue-100 text-blue-800", icon: UserCog },
-  assistant: { label: "مساعد", color: "bg-green-100 text-green-800", icon: Users },
-};
+import { type User as UserType, type InsertUser, insertUserSchema } from "@shared/schema";
 
 export default function UsersPage() {
   const [open, setOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const queryClient = useQueryClient();
 
-  // Only admins can access this page
-  if (currentUser?.role !== 'admin') {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Shield className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h2 className="text-xl font-semibold mb-2">غير مصرح</h2>
-            <p className="text-muted-foreground">تحتاج صلاحية مدير للوصول إلى هذه الصفحة</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-  const { data: users, isLoading } = useQuery<User[]>({
+  const { data: users, isLoading } = useQuery<UserType[]>({
     queryKey: ["/api/users"],
   });
 
-  const form = useForm<CreateUserFormData>({
-    resolver: zodResolver(createUserSchema),
+  const form = useForm<InsertUser>({
+    resolver: zodResolver(insertUserSchema),
     defaultValues: {
       username: "",
       password: "",
-      confirmPassword: "",
       name: "",
       email: "",
-      phone: "",
       role: "assistant",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertUser) => {
-      const res = await apiRequest("POST", "/api/users", data);
-      return res.json();
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في إنشاء المستخدم");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "تم إنشاء المستخدم بنجاح" });
       setOpen(false);
       form.reset();
-      toast({ title: "تم إضافة المستخدم بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في إضافة المستخدم", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في إنشاء المستخدم", description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertUser> }) => {
-      const res = await apiRequest("PUT", `/api/users/${id}`, data);
-      return res.json();
+      const response = await fetch(`/api/users/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في تحديث المستخدم");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      setOpen(false);
-      setEditingUser(null);
-      form.reset();
       toast({ title: "تم تحديث المستخدم بنجاح" });
+      setOpen(false);
+      form.reset();
+      setEditingUser(null);
     },
-    onError: () => {
-      toast({ title: "خطأ في تحديث المستخدم", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في تحديث المستخدم", description: error.message, variant: "destructive" });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/users/${id}`);
+      const response = await fetch(`/api/users/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "فشل في حذف المستخدم");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "تم حذف المستخدم بنجاح" });
     },
-    onError: () => {
-      toast({ title: "خطأ في حذف المستخدم", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "خطأ في حذف المستخدم", description: error.message, variant: "destructive" });
     },
   });
 
-  const onSubmit = (data: CreateUserFormData) => {
-    const { confirmPassword, ...userData } = data;
-    
+  const onSubmit = (data: InsertUser) => {
     if (editingUser) {
-      // Don't update password if it's empty during edit
-      const updateData = data.password ? userData : { ...userData, password: undefined };
-      updateMutation.mutate({ id: editingUser.id, data: updateData });
+      updateMutation.mutate({ id: editingUser.id, data });
     } else {
-      createMutation.mutate(userData);
+      createMutation.mutate(data);
     }
   };
 
-  const handleEdit = (user: User) => {
+  const handleEdit = (user: UserType) => {
     setEditingUser(user);
     form.reset({
       username: user.username,
       password: "",
-      confirmPassword: "",
-      name: user.name,
+      name: user.name || "",
       email: user.email || "",
-      phone: user.phone || "",
       role: user.role,
     });
     setOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (id === currentUser?.id) {
-      toast({ title: "لا يمكن حذف حسابك الخاص", variant: "destructive" });
-      return;
-    }
-    
-    if (confirm("هل أنت متأكد من حذف هذا المستخدم؟")) {
-      deleteMutation.mutate(id);
+  const handleDelete = (user: UserType) => {
+    if (confirm(`هل أنت متأكد من حذف المستخدم "${user.username}"؟`)) {
+      deleteMutation.mutate(user.id);
     }
   };
 
   const filteredUsers = users?.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
-  const userStats = {
-    total: filteredUsers.length,
-    admins: filteredUsers.filter(u => u.role === 'admin').length,
-    lawyers: filteredUsers.filter(u => u.role === 'lawyer').length,
-    assistants: filteredUsers.filter(u => u.role === 'assistant').length,
+  const getRoleBadge = (role: string) => {
+    const roleConfig: Record<string, { label: string; className: string }> = {
+      admin: { label: "مدير", className: "bg-red-100 text-red-800" },
+      lawyer: { label: "محامي", className: "bg-blue-100 text-blue-800" },
+      assistant: { label: "مساعد", className: "bg-green-100 text-green-800" },
+    };
+    const config = roleConfig[role] || roleConfig.assistant;
+    return (
+      <div className="flex items-center gap-1">
+        <Shield className="w-4 h-4" />
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.className}`}>
+          {config.label}
+        </span>
+      </div>
+    );
   };
+
+  // Define columns for DataTable
+  const columns: DataTableColumn<UserType>[] = [
+    {
+      key: "username",
+      label: "اسم المستخدم",
+      sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-blue-600" />
+          <span className="font-medium">{row.username}</span>
+        </div>
+      ),
+    },
+    {
+      key: "name",
+      label: "الاسم الكامل",
+      sortable: true,
+      render: (row) => row.name || "-",
+    },
+    {
+      key: "email",
+      label: "البريد الإلكتروني",
+      sortable: true,
+      render: (row) => row.email || "-",
+    },
+    {
+      key: "role",
+      label: "الدور",
+      sortable: true,
+      align: "center",
+      render: (row) => getRoleBadge(row.role),
+    },
+    {
+      key: "createdAt",
+      label: "تاريخ الإنشاء",
+      sortable: true,
+      align: "center",
+      render: (row) => row.createdAt ? formatDualDate(row.createdAt.toString()) : "-",
+    },
+    {
+      key: "id",
+      label: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
+            <Edit className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Layout>
       <div className="space-y-6 mt-6">
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">إجمالي المستخدمين</p>
-                  <p className="text-2xl font-bold">{userStats.total}</p>
-                </div>
-                <Users className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المديرين</p>
-                  <p className="text-2xl font-bold text-red-600">{userStats.admins}</p>
-                </div>
-                <Shield className="w-8 h-8 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المحامين</p>
-                  <p className="text-2xl font-bold text-blue-600">{userStats.lawyers}</p>
-                </div>
-                <UserCog className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">المساعدين</p>
-                  <p className="text-2xl font-bold text-green-600">{userStats.assistants}</p>
-                </div>
-                <Users className="w-8 h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Search and Add */}
         <div className="flex justify-between items-center gap-4">
           <div className="relative w-64">
@@ -242,7 +247,7 @@ export default function UsersPage() {
                 إضافة مستخدم جديد
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>
                   {editingUser ? "تعديل المستخدم" : "إضافة مستخدم جديد"}
@@ -250,84 +255,72 @@ export default function UsersPage() {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>الاسم الكامل</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم المستخدم</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>البريد الإلكتروني</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="role"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>الدور</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>اسم المستخدم</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر الدور" />
-                            </SelectTrigger>
+                            <Input {...field} value={field.value ?? ''} />
                           </FormControl>
-                          <SelectContent>
-                            <SelectItem value="assistant">مساعد</SelectItem>
-                            <SelectItem value="lawyer">محامي</SelectItem>
-                            <SelectItem value="admin">مدير</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الاسم الكامل</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value ?? ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>البريد الإلكتروني</FormLabel>
+                          <FormControl>
+                            <Input type="email" {...field} value={field.value ?? ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="role"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الدور</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="اختر الدور" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="admin">مدير</SelectItem>
+                              <SelectItem value="lawyer">محامي</SelectItem>
+                              <SelectItem value="assistant">مساعد</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}
@@ -335,25 +328,10 @@ export default function UsersPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          كلمة المرور
-                          {editingUser && <span className="text-sm text-muted-foreground"> (اتركها فارغة للاحتفاظ بالحالية)</span>}
+                          {editingUser ? "كلمة المرور الجديدة (اتركها فارغة إذا لم ترد تغييرها)" : "كلمة المرور"}
                         </FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تأكيد كلمة المرور</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
+                          <Input type="password" {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -394,90 +372,12 @@ export default function UsersPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>الاسم</TableHead>
-                    <TableHead>اسم المستخدم</TableHead>
-                    <TableHead>البريد الإلكتروني</TableHead>
-                    <TableHead>الهاتف</TableHead>
-                    <TableHead>الدور</TableHead>
-                    <TableHead>تاريخ الإنشاء</TableHead>
-                    <TableHead>الإجراءات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>لا توجد مستخدمين</p>
-                        <p className="text-sm">ابدأ بإضافة مستخدم جديد</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredUsers.map((user) => {
-                      const RoleIcon = roleMap[user.role].icon;
-                      return (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.username}</TableCell>
-                          <TableCell>
-                            {user.email ? (
-                              <div className="flex items-center gap-2">
-                                <Mail className="w-4 h-4 text-muted-foreground" />
-                                {user.email}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {user.phone ? (
-                              <div className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-muted-foreground" />
-                                {user.phone}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={roleMap[user.role].color}>
-                              <RoleIcon className="w-3 h-3 ml-1" />
-                              {roleMap[user.role].label}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {user.createdAt ? formatDualDate(user.createdAt) : "-"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleEdit(user)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              {user.id !== currentUser?.id && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={() => handleDelete(user.id)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+              <DataTable
+                columns={columns}
+                data={filteredUsers}
+                initialSort={{ key: "username", direction: "asc" }}
+                initialPageSize={10}
+              />
             )}
           </CardContent>
         </Card>
