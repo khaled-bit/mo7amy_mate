@@ -18,6 +18,10 @@
     "paths": {
       "@/*": ["./client/src/*"],
       "@shared/*": ["./shared/*"]
-    }
+    },
+    "outDir": "dist",
+    "rootDir": ".",
+    "target": "es2019",
+    "resolveJsonModule": true
   }
 }
