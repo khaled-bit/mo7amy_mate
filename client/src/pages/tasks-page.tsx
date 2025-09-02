@@ -385,11 +385,35 @@ export default function TasksPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الحالة</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value ?? "pending"}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="اختر الحالة" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="pending">معلقة</SelectItem>
+                              <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
+                              <SelectItem value="completed">مكتملة</SelectItem>
+                              <SelectItem value="cancelled">ملغية</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
                       name="priority"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>الأولوية</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value ?? "medium"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="اختر الأولوية" />
