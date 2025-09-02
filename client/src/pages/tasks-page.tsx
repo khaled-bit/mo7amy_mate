@@ -241,7 +241,7 @@ export default function TasksPage() {
       label: "الأولوية",
       sortable: true,
       align: "center",
-      render: (row) => getPriorityBadge(row.priority),
+      render: (row) => getPriorityBadge(row.priority ?? "medium"),
     },
     {
       key: "status",
@@ -389,7 +389,7 @@ export default function TasksPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>الحالة</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value ?? "pending"}>
+                          <Select onValueChange={(value: string) => field.onChange(value)} defaultValue={field.value ?? "pending"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="اختر الحالة" />
@@ -413,7 +413,7 @@ export default function TasksPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>الأولوية</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value ?? "medium"}>
+                          <Select onValueChange={(value: string) => field.onChange(value)} defaultValue={field.value ?? "medium"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="اختر الأولوية" />
