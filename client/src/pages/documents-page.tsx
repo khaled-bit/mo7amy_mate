@@ -13,21 +13,22 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal";
 import { FileText, Upload, Download, Trash2, Search, Plus, Edit, Eye } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatDualDate } from "@/lib/utils";
-import { type Document, type Case, type InsertDocument, insertDocumentSchema } from "@shared/schema";
+import { type Document, type Case } from "@shared/schema";
 
-const uploadSchema = z.object({
-  caseId: z.number().min(1, "يجب اختيار القضية"),
+const formSchema = z.object({
+  caseId: z.number().min(1, "يجب اختيار القضية").optional(),
   title: z.string().min(1, "عنوان المستند مطلوب"),
   description: z.string().optional(),
-  file: z.any().refine((file) => file?.length == 1, "يجب اختيار ملف"),
+  fileType: z.string().optional(),
+  fileSize: z.number().optional(),
 });
 
-type UploadFormData = z.infer<typeof uploadSchema>;
+type DocumentFormValues = z.infer<typeof formSchema>;
 
 export default function DocumentsPage() {
   const { user } = useAuth();
@@ -40,10 +41,10 @@ export default function DocumentsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
 
-  const form = useForm<InsertDocument>({
-    resolver: zodResolver(insertDocumentSchema),
+  const form = useForm<DocumentFormValues>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
-      caseId: null,
+      caseId: undefined,
       title: "",
       description: "",
       fileType: "",
@@ -65,13 +66,16 @@ export default function DocumentsPage() {
 
   // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: async (data: InsertDocument) => {
+    mutationFn: async (data: DocumentFormValues & { id?: number }) => {
       const formData = new FormData();
-      formData.append("caseId", data.caseId?.toString() || "");
+      formData.append("caseId", data.caseId != null ? data.caseId.toString() : "");
       formData.append("title", data.title);
       formData.append("description", data.description || "");
-      formData.append("fileType", data.fileType);
-      formData.append("fileSize", data.fileSize.toString());
+      formData.append("fileType", data.fileType ?? "");
+      formData.append("fileSize", String(data.fileSize ?? 0));
+      if (data.id != null) {
+        formData.append("id", data.id.toString());
+      }
       
       if (selectedFile) {
         formData.append("file", selectedFile);
@@ -122,7 +126,7 @@ export default function DocumentsPage() {
     },
   });
 
-  const onSubmit = (data: InsertDocument) => {
+  const onSubmit: SubmitHandler<DocumentFormValues> = (data) => {
     if (editingDocument) {
       uploadMutation.mutate({ ...data, id: editingDocument.id });
     } else {
@@ -316,7 +320,7 @@ export default function DocumentsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>القضية</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
+                        <Select onValueChange={(value) => field.onChange(value ? Number(value) : undefined)} value={field.value?.toString() || ""}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="اختر القضية" />
