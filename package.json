@@ -10,7 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "start": "cross-env NODE_ENV=production node dist/server/index.js",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:seed": "cross-env tsx server/seed.ts",
