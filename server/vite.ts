@@ -72,11 +72,21 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  // Support both running compiled JS (dist/server) and TS via tsx (server)
+  const candidates = [
+    // When compiled: dist/server/... -> dist/public
+    path.resolve(import.meta.dirname, "..", "public"),
+    // When running TS directly: server/... -> dist/public at project root
+    path.resolve(import.meta.dirname, "..", "..", "dist", "public"),
+  ];
 
-  if (!fs.existsSync(distPath)) {
+  const distPath = candidates.find((p) => fs.existsSync(p));
+
+  if (!distPath) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+      `Could not find the built client directory. Tried: ${candidates.join(
+        ", "
+      )}. Make sure to run the client build.`,
     );
   }
 
